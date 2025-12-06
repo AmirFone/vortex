@@ -7,10 +7,10 @@ mod common;
 
 use std::sync::Arc;
 
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::BlockStorage;
-use vectordb::tenant::TenantState;
-use vectordb::wal::Wal;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::BlockStorage;
+use vortex::tenant::TenantState;
+use vortex::wal::Wal;
 
 use common::{reopen_storage, seeded_vector, temp_storage_with_path, truncate_file, FailingStorage, FailureMode};
 
@@ -120,7 +120,7 @@ async fn test_empty_wal_recovery() {
         .await
         .unwrap();
 
-    assert_eq!(tenant.stats().vector_count, 0, "Should recover empty state");
+    assert_eq!(tenant.stats().await.vector_count, 0, "Should recover empty state");
 
     drop(temp_dir);
 }
@@ -167,7 +167,7 @@ async fn test_corrupted_hnsw_recovery() {
     match result {
         Ok(tenant) => {
             // If recovery succeeded, verify data
-            assert!(tenant.stats().vector_count > 0, "Should have recovered vectors");
+            assert!(tenant.stats().await.vector_count > 0, "Should have recovered vectors");
         }
         Err(_) => {
             // If HNSW is unrecoverable, WAL should still be intact
@@ -211,7 +211,7 @@ async fn test_idempotent_recovery() {
             .unwrap();
 
         assert_eq!(
-            tenant.stats().vector_count,
+            tenant.stats().await.vector_count,
             10,
             "Recovery #{} should have exactly 10 vectors",
             recovery_num
@@ -254,7 +254,7 @@ async fn test_recovery_missing_id_map() {
 
     // Vectors should still be searchable
     let query = seeded_vector(4, 0);
-    let results = tenant.search(&query, 5, None);
+    let results = tenant.search(&query, 5, None).await;
     assert!(!results.is_empty(), "Should find vectors after id_map recovery");
 
     drop(temp_dir);
@@ -293,7 +293,7 @@ async fn test_recovery_corrupted_metadata() {
     match result {
         Ok(tenant) => {
             // If recovery succeeded, we're good
-            assert!(tenant.stats().vector_count > 0);
+            assert!(tenant.stats().await.vector_count > 0);
         }
         Err(e) => {
             // Error is acceptable for corrupted metadata
@@ -338,12 +338,12 @@ async fn test_recovery_mixed_hnsw_and_buffer() {
         .unwrap();
 
     // Should have all 50 vectors
-    assert_eq!(tenant.stats().vector_count, 50);
+    assert_eq!(tenant.stats().await.vector_count, 50);
 
     // Verify both HNSW vectors and write buffer vectors are searchable
     for i in [0, 12, 24, 30, 40, 49] {
         let query = seeded_vector(4, i);
-        let results = tenant.search(&query, 1, None);
+        let results = tenant.search(&query, 1, None).await;
         assert!(
             !results.is_empty(),
             "Vector {} should be searchable after recovery",
@@ -382,7 +382,7 @@ async fn test_recovery_no_duplicates() {
         .unwrap();
 
     // Search should return only one result for this vector
-    let results = tenant.search(&vector, 10, None);
+    let results = tenant.search(&vector, 10, None).await;
     let matching: Vec<_> = results.iter().filter(|r| r.id == vector_id).collect();
     assert_eq!(matching.len(), 1, "Should not have duplicate entries for same ID");
 
@@ -431,7 +431,7 @@ async fn test_recovery_after_write_failure() {
 
     // Should have at least the first 10 vectors
     assert!(
-        tenant.stats().vector_count >= 10,
+        tenant.stats().await.vector_count >= 10,
         "Should recover at least first batch"
     );
 
@@ -472,7 +472,7 @@ async fn test_recovery_after_sync_failure() {
         .unwrap();
 
     // Vectors should still be recovered from WAL
-    assert!(tenant.stats().vector_count >= 10, "Should recover from WAL despite sync failure");
+    assert!(tenant.stats().await.vector_count >= 10, "Should recover from WAL despite sync failure");
 
     drop(temp_dir);
 }

@@ -10,10 +10,10 @@ mod common;
 
 use std::sync::Arc;
 
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::BlockStorage;
-use vectordb::tenant::TenantState;
-use vectordb::wal::Wal;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::BlockStorage;
+use vortex::tenant::TenantState;
+use vortex::wal::Wal;
 
 use common::{normalize, random_vector, reopen_storage, seeded_vector, temp_storage_with_path, FailingStorage, FailureMode};
 
@@ -127,7 +127,7 @@ async fn test_batch_atomicity_with_failure() {
         .await
         .unwrap();
 
-    let stats = tenant2.stats();
+    let stats = tenant2.stats().await;
     // Should have at least the first 5 vectors
     assert!(stats.vector_count >= 5, "Should have at least first batch");
 
@@ -275,7 +275,7 @@ async fn test_concurrent_reads_during_writes() {
         while reader_running.load(Ordering::Relaxed) {
             let query = random_vector(4);
             // Search should not panic or return corrupted data
-            let results = reader_tenant.search(&query, 5, None);
+            let results = reader_tenant.search(&query, 5, None).await;
             for r in &results {
                 if r.similarity.is_nan() || r.similarity.is_infinite() {
                     reader_errors.fetch_add(1, Ordering::Relaxed);
@@ -323,7 +323,7 @@ async fn test_multi_tenant_isolation() {
     tenant2.upsert(vec![(100, tenant2_vector.clone())]).await.unwrap();
 
     // Search tenant1 - should only find tenant1's vector
-    let results1 = tenant1.search(&tenant1_vector, 10, None);
+    let results1 = tenant1.search(&tenant1_vector, 10, None).await;
     for r in &results1 {
         // Vector should be similar to tenant1's vector (not tenant2's)
         let expected_sim = common::cosine_similarity(&tenant1_vector, &tenant1_vector);
@@ -334,7 +334,7 @@ async fn test_multi_tenant_isolation() {
     }
 
     // Search tenant2 - should only find tenant2's vector
-    let results2 = tenant2.search(&tenant2_vector, 10, None);
+    let results2 = tenant2.search(&tenant2_vector, 10, None).await;
     for r in &results2 {
         let expected_sim = common::cosine_similarity(&tenant2_vector, &tenant2_vector);
         assert!(
@@ -344,8 +344,8 @@ async fn test_multi_tenant_isolation() {
     }
 
     // Verify stats are separate
-    assert_eq!(tenant1.stats().vector_count, 1);
-    assert_eq!(tenant2.stats().vector_count, 1);
+    assert_eq!(tenant1.stats().await.vector_count, 1);
+    assert_eq!(tenant2.stats().await.vector_count, 1);
 }
 
 // ============================================================================
@@ -383,11 +383,11 @@ async fn test_durability_write_crash_recover() {
         .unwrap();
 
     // Vector should be recovered from WAL
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(stats.vector_count, 1, "Vector should be recovered from WAL");
 
     // Should be searchable (in write buffer after recovery)
-    let results = tenant.search(&unique_vector, 1, None);
+    let results = tenant.search(&unique_vector, 1, None).await;
     assert!(!results.is_empty(), "Recovered vector should be searchable");
     assert_eq!(results[0].id, vector_id, "Should find the same vector ID");
 
@@ -421,7 +421,7 @@ async fn test_durability_multiple_vectors() {
         .await
         .unwrap();
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(
         stats.vector_count, num_vectors as u64,
         "All {} vectors should be recovered",
@@ -454,7 +454,7 @@ async fn test_recovery_after_multiple_crashes() {
         let tenant = TenantState::open(1, 4, storage2.clone(), config.clone())
             .await
             .unwrap();
-        assert_eq!(tenant.stats().vector_count, 10);
+        assert_eq!(tenant.stats().await.vector_count, 10);
 
         let vectors: Vec<(u64, Vec<f32>)> = (10..20)
             .map(|i| (100 + i as u64, seeded_vector(4, i)))
@@ -468,7 +468,7 @@ async fn test_recovery_after_multiple_crashes() {
         let tenant = TenantState::open(1, 4, storage3.clone(), config.clone())
             .await
             .unwrap();
-        assert_eq!(tenant.stats().vector_count, 20);
+        assert_eq!(tenant.stats().await.vector_count, 20);
 
         let vectors: Vec<(u64, Vec<f32>)> = (20..30)
             .map(|i| (100 + i as u64, seeded_vector(4, i)))
@@ -482,7 +482,7 @@ async fn test_recovery_after_multiple_crashes() {
         .await
         .unwrap();
 
-    assert_eq!(tenant.stats().vector_count, 30, "All 30 vectors should survive multiple crashes");
+    assert_eq!(tenant.stats().await.vector_count, 30, "All 30 vectors should survive multiple crashes");
 
     drop(temp_dir);
 }
@@ -564,7 +564,7 @@ async fn test_flush_then_crash_recovery() {
         .unwrap();
 
     // Should have all 40 vectors (20 from HNSW + 20 from WAL replay)
-    assert_eq!(tenant.stats().vector_count, 40, "All vectors should be recovered");
+    assert_eq!(tenant.stats().await.vector_count, 40, "All vectors should be recovered");
 
     drop(temp_dir);
 }

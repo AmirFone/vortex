@@ -10,9 +10,9 @@
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::sync::Arc;
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::mock::{MockBlockStorage, MockStorageConfig};
-use vectordb::tenant::TenantState;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
+use vortex::tenant::TenantState;
 
 const TEST_DIMS: usize = 384;
 
@@ -86,7 +86,7 @@ fn bench_search_ef_values(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Pre-populate index
-    let (tenant, storage) = rt.block_on(async {
+    let (tenant, _storage) = rt.block_on(async {
         let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
         let config = HnswConfig::new(TEST_DIMS);
         let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
@@ -112,8 +112,10 @@ fn bench_search_ef_values(c: &mut Criterion) {
     for ef in [50, 100, 200, 500] {
         group.bench_with_input(BenchmarkId::from_parameter(ef), &ef, |b, &ef| {
             b.iter(|| {
-                let query = generate_random_vector(TEST_DIMS);
-                black_box(tenant.search(&query, 10, Some(ef)))
+                rt.block_on(async {
+                    let query = generate_random_vector(TEST_DIMS);
+                    black_box(tenant.search(&query, 10, Some(ef)).await)
+                })
             });
         });
     }
@@ -147,8 +149,10 @@ fn bench_search_k_values(c: &mut Criterion) {
     for k in [1, 5, 10, 20, 50, 100] {
         group.bench_with_input(BenchmarkId::from_parameter(k), &k, |b, &k| {
             b.iter(|| {
-                let query = generate_random_vector(TEST_DIMS);
-                black_box(tenant.search(&query, k, Some(100)))
+                rt.block_on(async {
+                    let query = generate_random_vector(TEST_DIMS);
+                    black_box(tenant.search(&query, k, Some(100)).await)
+                })
             });
         });
     }
@@ -184,8 +188,10 @@ fn bench_search_index_sizes(c: &mut Criterion) {
             &index_size,
             |b, _| {
                 b.iter(|| {
-                    let query = generate_random_vector(TEST_DIMS);
-                    black_box(tenant.search(&query, 10, Some(100)))
+                    rt.block_on(async {
+                        let query = generate_random_vector(TEST_DIMS);
+                        black_box(tenant.search(&query, 10, Some(100)).await)
+                    })
                 });
             },
         );
@@ -290,8 +296,10 @@ fn bench_write_buffer_search(c: &mut Criterion) {
             &buffer_size,
             |b, _| {
                 b.iter(|| {
-                    let query = generate_random_vector(TEST_DIMS);
-                    black_box(tenant.search(&query, 10, None))
+                    rt.block_on(async {
+                        let query = generate_random_vector(TEST_DIMS);
+                        black_box(tenant.search(&query, 10, None).await)
+                    })
                 });
             },
         );
@@ -307,7 +315,7 @@ fn bench_write_buffer_search(c: &mut Criterion) {
 fn bench_mixed_read_write(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let (tenant, storage) = rt.block_on(async {
+    let (tenant, _storage) = rt.block_on(async {
         let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
         let config = HnswConfig::new(TEST_DIMS);
         let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
@@ -338,7 +346,7 @@ fn bench_mixed_read_write(c: &mut Criterion) {
 
                 // Search
                 let query = generate_random_vector(TEST_DIMS);
-                black_box(tenant.search(&query, 10, None))
+                black_box(tenant.search(&query, 10, None).await)
             })
         });
     });

@@ -16,9 +16,9 @@ use common::{generate_random_vectors, normalize, random_vector, LatencyHistogram
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Barrier;
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::mock::{MockBlockStorage, MockStorageConfig};
-use vectordb::tenant::TenantState;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
+use vortex::tenant::TenantState;
 
 const TEST_DIMS: usize = 384;
 const BATCH_SIZE: usize = 100;
@@ -170,7 +170,7 @@ async fn profile_search_path_breakdown() {
         for _ in 0..100 {
             let query = normalize(&random_vector(TEST_DIMS));
             let start = Instant::now();
-            tenant.search(&query, 10, Some(ef));
+            tenant.search(&query, 10, Some(ef)).await;
             latencies.push(start.elapsed());
         }
 
@@ -190,7 +190,7 @@ async fn profile_search_path_breakdown() {
         .collect();
     tenant.upsert(extra).await.unwrap();
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     println!(
         "HNSW nodes: {}, Write buffer: {}",
         stats.hnsw_nodes, stats.write_buffer_size
@@ -201,7 +201,7 @@ async fn profile_search_path_breakdown() {
         for _ in 0..100 {
             let query = normalize(&random_vector(TEST_DIMS));
             let start = Instant::now();
-            tenant.search(&query, 10, Some(ef));
+            tenant.search(&query, 10, Some(ef)).await;
             latencies.push(start.elapsed());
         }
 
@@ -244,12 +244,12 @@ async fn profile_write_buffer_overhead() {
         for _ in 0..50 {
             let query = normalize(&random_vector(TEST_DIMS));
             let start = Instant::now();
-            tenant.search(&query, 10, Some(100));
+            tenant.search(&query, 10, Some(100)).await;
             latencies.push(start.elapsed());
         }
 
         let hist = LatencyHistogram::from_latencies(latencies);
-        let stats = tenant.stats();
+        let stats = tenant.stats().await;
 
         println!(
             "Buffer size {}: p50={:?}, p99={:?}, mean={:?}",
@@ -300,7 +300,7 @@ async fn profile_flush_path_breakdown() {
         let flush_duration = start.elapsed();
 
         let per_vector = flush_duration / buffer_size as u32;
-        let stats = tenant.stats();
+        let stats = tenant.stats().await;
 
         println!(
             "Flush {} vectors: total={:?}, per_vector={:?}, final_hnsw={}",
@@ -331,7 +331,7 @@ async fn profile_flush_path_breakdown() {
         tenant.flush_to_hnsw(&*storage).await.unwrap();
         let duration = start.elapsed();
 
-        let stats = tenant.stats();
+        let stats = tenant.stats().await;
         println!(
             "Round {}: flush 1000 into {} existing: {:?} ({:?}/vec)",
             round + 1,
@@ -373,7 +373,7 @@ async fn profile_lock_contention() {
         if i % 2 == 0 {
             let query = normalize(&random_vector(TEST_DIMS));
             let start = Instant::now();
-            tenant.search(&query, 10, None);
+            tenant.search(&query, 10, None).await;
             serial_read.push(start.elapsed());
         } else {
             let vectors = vec![(10000 + i as u64, normalize(&random_vector(TEST_DIMS)))];
@@ -407,7 +407,7 @@ async fn profile_lock_contention() {
             for _ in 0..50 {
                 let query = normalize(&random_vector(TEST_DIMS));
                 let start = Instant::now();
-                tenant.search(&query, 10, None);
+                tenant.search(&query, 10, None).await;
                 latencies.push(start.elapsed());
             }
 
@@ -486,7 +486,7 @@ async fn profile_id_map_lookup() {
         for _ in 0..100 {
             let query = normalize(&random_vector(TEST_DIMS));
             let start = Instant::now();
-            tenant.search(&query, 10, Some(100));
+            tenant.search(&query, 10, Some(100)).await;
             latencies.push(start.elapsed());
         }
 
@@ -548,7 +548,7 @@ async fn profile_distance_computation() {
     for _ in 0..100 {
         let q = normalize(&random_vector(TEST_DIMS));
         let start = Instant::now();
-        tenant.search(&q, 10, Some(100));
+        tenant.search(&q, 10, Some(100)).await;
         search_latencies.push(start.elapsed());
     }
 

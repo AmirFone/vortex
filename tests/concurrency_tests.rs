@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use tokio::time::{timeout, Duration};
 
-use vectordb::hnsw::HnswConfig;
-use vectordb::tenant::TenantState;
+use vortex::hnsw::HnswConfig;
+use vortex::tenant::TenantState;
 
 use common::{random_vector, seeded_vector, temp_storage};
 
@@ -57,7 +57,7 @@ async fn test_concurrent_upserts_same_tenant() {
         handle.await.unwrap();
     }
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     // Should have all vectors (allowing for some duplicates being skipped)
     assert!(
         stats.vector_count >= (num_threads * vectors_per_thread / 2) as u64,
@@ -113,7 +113,7 @@ async fn test_concurrent_upsert_and_search() {
         let handle = tokio::spawn(async move {
             while running.load(Ordering::Relaxed) {
                 let query = random_vector(4);
-                let results = tenant.search(&query, 10, None);
+                let results = tenant.search(&query, 10, None).await;
                 // Check for corrupted results
                 for r in &results {
                     if r.similarity.is_nan() || r.similarity.is_infinite() {
@@ -201,7 +201,7 @@ async fn test_concurrent_upsert_and_flush() {
     assert!(flushes > 0, "Should have completed flushes");
 
     // Final stats should be consistent
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert!(
         stats.vector_count > 0,
         "Should have some vectors after concurrent operations"
@@ -253,7 +253,7 @@ async fn test_multiple_readers_single_writer() {
         let reader = tokio::spawn(async move {
             while reader_running.load(Ordering::Relaxed) {
                 let query = random_vector(4);
-                let _ = reader_tenant.search(&query, 5, None);
+                let _ = reader_tenant.search(&query, 5, None).await;
                 reader_count.fetch_add(1, Ordering::Relaxed);
             }
         });
@@ -305,7 +305,7 @@ async fn test_concurrent_different_tenants() {
             tenant.flush_to_hnsw(&*storage).await.unwrap();
 
             // Verify
-            let stats = tenant.stats();
+            let stats = tenant.stats().await;
             assert_eq!(
                 stats.vector_count, vectors_per_tenant as u64,
                 "Tenant {} should have {} vectors",
@@ -314,7 +314,7 @@ async fn test_concurrent_different_tenants() {
 
             // Search
             let query = seeded_vector(4, (tenant_id * 1000) as u64);
-            let results = tenant.search(&query, 5, None);
+            let results = tenant.search(&query, 5, None).await;
             assert!(!results.is_empty(), "Tenant {} should find results", tenant_id);
         });
         handles.push(handle);
@@ -364,7 +364,7 @@ async fn test_no_cross_tenant_leakage() {
         let leakage = leakage_detected.clone();
         let handle = tokio::spawn(async move {
             while running.load(Ordering::Relaxed) {
-                let results = t1.search(&t1_expected, 10, None);
+                let results = t1.search(&t1_expected, 10, None).await;
                 for r in &results {
                     // If we find tenant2's vector (high similarity to Y-direction), that's leakage
                     let y_sim = common::cosine_similarity(
@@ -388,7 +388,7 @@ async fn test_no_cross_tenant_leakage() {
         let leakage = leakage_detected.clone();
         let handle = tokio::spawn(async move {
             while running.load(Ordering::Relaxed) {
-                let results = t2.search(&t2_expected, 10, None);
+                let results = t2.search(&t2_expected, 10, None).await;
                 for r in &results {
                     // If we find tenant1's vector (high similarity to X-direction), that's leakage
                     let x_sim = common::cosine_similarity(
@@ -453,7 +453,7 @@ async fn test_high_contention() {
                         let _ = tenant.upsert(vec![(vector_id, vector)]).await;
                     }
                     1 => {
-                        let _ = tenant.search(&vector, 5, None);
+                        let _ = tenant.search(&vector, 5, None).await;
                     }
                     2 => {
                         let _ = tenant.flush_to_hnsw(&*storage).await;
@@ -472,7 +472,7 @@ async fn test_high_contention() {
     }
 
     // Final state should be consistent
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert!(stats.vector_count > 0, "Should have vectors after stress test");
 }
 
@@ -492,12 +492,12 @@ async fn test_rapid_sequential_operations() {
         tenant.upsert(vec![(i as u64, vector)]).await.unwrap();
     }
 
-    assert_eq!(tenant.stats().vector_count, 500);
+    assert_eq!(tenant.stats().await.vector_count, 500);
 
     // Rapid fire searches
     for _ in 0..100 {
         let query = random_vector(4);
-        let _ = tenant.search(&query, 10, None);
+        let _ = tenant.search(&query, 10, None).await;
     }
 }
 
@@ -531,7 +531,7 @@ async fn test_concurrent_stats_reads() {
         let count = stats_count.clone();
         let handle = tokio::spawn(async move {
             while running.load(Ordering::Relaxed) {
-                let stats = tenant.stats();
+                let stats = tenant.stats().await;
                 assert!(stats.vector_count <= 1000); // Sanity check
                 count.fetch_add(1, Ordering::Relaxed);
             }

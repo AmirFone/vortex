@@ -14,8 +14,8 @@ use async_trait::async_trait;
 use rand::Rng;
 use tempfile::TempDir;
 
-use vectordb::storage::mock::{MockBlockStorage, MockStorageConfig};
-use vectordb::storage::{BlockStorage, StorageError, StorageResult};
+use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
+use vortex::storage::{BlockStorage, StorageError, StorageResult};
 
 /// Helper to create io::Error for injection
 fn io_error(msg: &str) -> std::io::Error {

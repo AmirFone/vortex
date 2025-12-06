@@ -107,16 +107,36 @@ impl TenantState {
     }
 
     /// Replay WAL entries to recover state
-    async fn replay_wal(&mut self, storage: Arc<dyn BlockStorage>) -> StorageResult<()> {
-        let last_flushed = *self.last_flushed_seq.read();
+    ///
+    /// IMPORTANT: This function must NOT re-append vectors to VectorStore.
+    /// Vectors are already persisted in VectorStore at indices [id_map.len()..count].
+    /// We only need to rebuild the in-memory id_map, reverse_id_map, and write_buffer.
+    async fn replay_wal(&mut self, _storage: Arc<dyn BlockStorage>) -> StorageResult<()> {
+        let id_map_len = self.id_map.read().len();
+        let vector_count = self.vectors.count() as usize;
+
+        // Determine where to start replaying from:
+        // - If id_map is empty but VectorStore has vectors, id_map was likely deleted
+        //   → replay from the beginning (sequence 0) to rebuild all mappings
+        // - Otherwise, replay from last_flushed_seq to rebuild only unflushed vectors
+        let replay_from_seq = if id_map_len == 0 && vector_count > 0 {
+            0 // id_map was deleted, rebuild from scratch
+        } else {
+            *self.last_flushed_seq.read()
+        };
+
         let entries = self
             .wal
-            .replay_from(last_flushed)
+            .replay_from(replay_from_seq)
             .await
             .map_err(|e| StorageError::Backend(e.to_string()))?;
 
+        // Track the next index for vectors being mapped
+        // If rebuilding from scratch, start at 0; otherwise start at id_map.len()
+        let mut current_idx = id_map_len as u32;
+
         for entry in entries {
-            // Check if already in id_map (scope ensures guard is dropped)
+            // Check if already in id_map (was flushed before crash or already processed)
             let already_exists = {
                 let id_map = self.id_map.read();
                 id_map.contains_key(&entry.vector_id)
@@ -126,22 +146,37 @@ impl TenantState {
                 continue;
             }
 
-            // Add to vector store if not already there
-            let idx = self.vectors.append(&entry.vector).await?;
+            // Vector is NOT in id_map but IS already in VectorStore
+            // DON'T append - just rebuild the in-memory mappings
+            let idx = current_idx;
 
             // Update id_map and reverse_id_map
             self.id_map.write().insert(entry.vector_id, idx);
             self.reverse_id_map.write().insert(idx, entry.vector_id);
 
-            // Add to write buffer (will be inserted to HNSW on flush)
-            self.write_buffer.write().push(idx);
+            // Add to write buffer only if this vector wasn't flushed to HNSW
+            // (i.e., if idx >= HNSW node count, it's still pending)
+            let hnsw_len = self.hnsw.len() as u32;
+            if idx >= hnsw_len {
+                self.write_buffer.write().push(idx);
+            }
+
+            current_idx += 1;
         }
 
         Ok(())
     }
 
     /// Upsert vectors
-    /// Optimized: Uses batch append instead of individual appends
+    ///
+    /// IMPORTANT: Uses double-check pattern to handle concurrent upserts safely.
+    /// - First check with read lock (fast path, filters obvious duplicates)
+    /// - Append to storage (async operation, no locks held)
+    /// - Second check with write lock (ensures atomicity, handles races)
+    ///
+    /// Race handling: If two concurrent upserts with same vector_id both pass the
+    /// first check, both will append to storage, but only one will succeed in
+    /// inserting to id_map. The "orphaned" vector data in storage is harmless.
     pub async fn upsert(&self, vectors: Vec<(u64, Vec<f32>)>) -> StorageResult<UpsertResult> {
         if vectors.is_empty() {
             return Ok(UpsertResult {
@@ -162,27 +197,27 @@ impl TenantState {
             .await
             .map_err(|e| StorageError::Backend(e.to_string()))?;
 
-        // Filter out duplicates and collect vectors for batch append
-        let mut vectors_to_insert: Vec<(u64, Vec<f32>)> = Vec::with_capacity(vectors.len());
-        {
+        // FIRST CHECK: Filter obvious duplicates with read lock (fast path)
+        // This is released before the await to satisfy Send bounds
+        let vectors_to_insert: Vec<(u64, Vec<f32>)> = {
             let id_map = self.id_map.read();
-            for (vector_id, vector) in vectors {
-                if !id_map.contains_key(&vector_id) {
-                    vectors_to_insert.push((vector_id, vector));
-                }
-            }
-        }
+            vectors
+                .into_iter()
+                .filter(|(vector_id, _)| !id_map.contains_key(vector_id))
+                .collect()
+        };
 
         if vectors_to_insert.is_empty() {
             return Ok(UpsertResult { count: 0, sequence });
         }
 
-        // Batch append all vectors at once
+        // Batch append all vectors at once (no locks held during async I/O)
         let vectors_data: Vec<Vec<f32>> = vectors_to_insert.iter().map(|(_, v)| v.clone()).collect();
         let start_idx = self.vectors.append_batch(&vectors_data).await?;
 
-        // Update id_map, reverse_id_map, and write_buffer in single lock acquisitions
-        let count = vectors_to_insert.len();
+        // SECOND CHECK: Acquire write locks and verify before inserting
+        // This handles the race where another thread inserted the same vector_id
+        let mut actually_inserted = 0;
         {
             let mut id_map = self.id_map.write();
             let mut reverse_id_map = self.reverse_id_map.write();
@@ -190,52 +225,85 @@ impl TenantState {
 
             for (i, (vector_id, _)) in vectors_to_insert.into_iter().enumerate() {
                 let idx = start_idx + i as u32;
-                id_map.insert(vector_id, idx);
-                reverse_id_map.insert(idx, vector_id);
-                write_buffer.push(idx);
+                // Re-check under write lock to handle concurrent inserts
+                if !id_map.contains_key(&vector_id) {
+                    id_map.insert(vector_id, idx);
+                    reverse_id_map.insert(idx, vector_id);
+                    write_buffer.push(idx);
+                    actually_inserted += 1;
+                }
+                // If duplicate detected here, vector is already in storage but won't
+                // be in id_map - this is safe (orphaned data, no inconsistency)
             }
         }
 
-        Ok(UpsertResult { count, sequence })
+        Ok(UpsertResult { count: actually_inserted, sequence })
     }
 
     /// Search for k nearest neighbors
-    /// Optimized: Uses reverse_id_map for O(1) lookups instead of O(n)
-    pub fn search(&self, query: &[f32], k: usize, ef: Option<usize>) -> Vec<SearchResult> {
-        let mut results = Vec::new();
+    /// Async to enable cooperative scheduling with other tasks
+    pub async fn search(&self, query: &[f32], k: usize, ef: Option<usize>) -> Vec<SearchResult> {
+        // Yield to allow other tasks to run (cooperative multitasking)
+        tokio::task::yield_now().await;
 
-        // Get reverse map once for all lookups
-        let reverse_id_map = self.reverse_id_map.read();
+        // Phase 1: HNSW search (doesn't need reverse_id_map lock)
+        // Use k * 4 instead of k * 2 to ensure enough candidates after deduplication
+        // with write_buffer results (which may contain duplicates)
+        let hnsw_results = self.hnsw.search(query, k * 4, ef, &self.vectors);
 
-        // Search HNSW index
-        let hnsw_results = self.hnsw.search(query, k * 2, ef, &self.vectors);
-        for (vector_index, similarity) in hnsw_results {
-            // O(1) lookup using reverse_id_map
-            if let Some(&vector_id) = reverse_id_map.get(&vector_index) {
-                results.push(SearchResult {
-                    id: vector_id,
-                    similarity,
-                });
+        // Yield after potentially expensive HNSW search
+        tokio::task::yield_now().await;
+
+        // Phase 2: Get write buffer indices (short lock)
+        let buffer_indices: Vec<u32> = {
+            let write_buffer = self.write_buffer.read();
+            write_buffer.clone()
+        };
+
+        // Phase 3: Compute buffer similarities
+        // IMPORTANT: Acquire mmap lock ONCE for all vector reads to reduce contention
+        let mut buffer_results: Vec<(u32, f32)> = Vec::new();
+        {
+            let mmap_guard = self.vectors.mmap();
+            if let Some(mmap) = mmap_guard.as_ref() {
+                for idx in buffer_indices {
+                    // Use get_slice for zero-copy access with held lock
+                    if let Some(vec) = self.vectors.get_slice(idx, mmap) {
+                        buffer_results.push((idx, cosine_similarity(query, vec)));
+                    }
+                }
             }
         }
 
-        // Also search write buffer (brute force)
-        let write_buffer = self.write_buffer.read();
-        for &idx in write_buffer.iter() {
-            if let Some(vec) = self.vectors.get(idx) {
-                let similarity = cosine_similarity(query, &vec);
+        // Phase 4: Map indices to vector IDs (short lock)
+        let mut results = Vec::new();
+        {
+            let reverse_id_map = self.reverse_id_map.read();
 
-                // O(1) lookup using reverse_id_map
+            // Map HNSW results
+            for (vector_index, similarity) in hnsw_results {
+                if let Some(&vector_id) = reverse_id_map.get(&vector_index) {
+                    results.push(SearchResult {
+                        id: vector_id,
+                        similarity,
+                    });
+                }
+            }
+
+            // Map buffer results (avoiding duplicates)
+            let existing_ids: std::collections::HashSet<u64> =
+                results.iter().map(|r| r.id).collect();
+
+            for (idx, similarity) in buffer_results {
                 if let Some(&vid) = reverse_id_map.get(&idx) {
-                    // Check if already in results
-                    if !results.iter().any(|r| r.id == vid) {
+                    if !existing_ids.contains(&vid) {
                         results.push(SearchResult { id: vid, similarity });
                     }
                 }
             }
         }
 
-        // Sort by similarity (descending) and take top k
+        // Phase 5: Sort by similarity (descending) and take top k (no locks)
         results.sort_by(|a, b| {
             b.similarity
                 .partial_cmp(&a.similarity)
@@ -247,6 +315,11 @@ impl TenantState {
     }
 
     /// Flush write buffer to HNSW index
+    ///
+    /// IMPORTANT: Write order is critical for crash safety:
+    /// 1. id_map FIRST (source of truth for vector ID mappings)
+    /// 2. meta.json SECOND (commits the id_map as valid, updates last_flushed_seq)
+    /// 3. HNSW index LAST (optimization only - can be rebuilt from id_map)
     pub async fn flush_to_hnsw(&self, storage: &dyn BlockStorage) -> StorageResult<usize> {
         // Extract indices in a separate scope to ensure guard is dropped before await
         let indices: Vec<u32> = {
@@ -260,29 +333,29 @@ impl TenantState {
 
         let count = indices.len();
 
-        // Insert each vector into HNSW
+        // Insert each vector into HNSW (in-memory only, not persisted yet)
         for idx in &indices {
             self.hnsw.insert(*idx, &self.vectors);
         }
 
-        // Save HNSW index
-        let hnsw_path = format!("tenant_{}/index.hnsw", self.tenant_id);
-        self.hnsw.save(storage, &hnsw_path).await?;
+        // Capture sequence BEFORE any persistence
+        let new_seq = self.wal.current_sequence();
 
-        // Save id_map
+        // STEP 1: Save id_map FIRST (source of truth for mappings)
+        // If crash happens after this, id_map is valid but meta has old sequence
+        // This causes harmless re-replay of already-processed WAL entries
         let id_map_path = format!("tenant_{}/id_map.bin", self.tenant_id);
         let id_map_data = bincode::serialize(&*self.id_map.read())
             .map_err(|e| StorageError::Serialization(e.to_string()))?;
         storage.write(&id_map_path, &id_map_data).await?;
         storage.sync(&id_map_path).await?;
 
-        // Update last_flushed_seq
-        *self.last_flushed_seq.write() = self.wal.current_sequence();
-
-        // Save metadata
+        // STEP 2: Save metadata SECOND (commits the id_map as valid)
+        // If crash happens after this, id_map and meta are consistent
+        // HNSW will be rebuilt on next flush (no data loss)
         let meta_path = format!("tenant_{}/meta.json", self.tenant_id);
         let meta = TenantMeta {
-            last_flushed_seq: *self.last_flushed_seq.read(),
+            last_flushed_seq: new_seq,
             vector_count: self.vectors.count(),
         };
         let meta_data =
@@ -290,11 +363,22 @@ impl TenantState {
         storage.write(&meta_path, &meta_data).await?;
         storage.sync(&meta_path).await?;
 
+        // STEP 3: Update in-memory sequence AFTER metadata is persisted
+        *self.last_flushed_seq.write() = new_seq;
+
+        // STEP 4: Save HNSW index LAST (optimization - recovery works without it)
+        let hnsw_path = format!("tenant_{}/index.hnsw", self.tenant_id);
+        self.hnsw.save(storage, &hnsw_path).await?;
+
         Ok(count)
     }
 
     /// Get stats
-    pub fn stats(&self) -> TenantStats {
+    /// Async to enable cooperative scheduling with other tasks
+    pub async fn stats(&self) -> TenantStats {
+        // Yield to allow other tasks to run (cooperative multitasking)
+        tokio::task::yield_now().await;
+
         TenantStats {
             tenant_id: self.tenant_id,
             vector_count: self.vectors.count(),
@@ -380,7 +464,7 @@ mod tests {
 
         // Search (should find in write buffer)
         let query = normalize(&[1.0, 2.0, 3.0, 4.0]);
-        let results = tenant.search(&query, 5, None);
+        let results = tenant.search(&query, 5, None).await;
         assert!(!results.is_empty());
     }
 
@@ -409,7 +493,7 @@ mod tests {
 
         // Search (should find in HNSW)
         let query = normalize(&[1.0, 2.0, 3.0, 4.0]);
-        let results = tenant.search(&query, 5, None);
+        let results = tenant.search(&query, 5, None).await;
         assert!(!results.is_empty());
     }
 
@@ -448,12 +532,12 @@ mod tests {
                 .await
                 .unwrap();
 
-            let stats = tenant.stats();
+            let stats = tenant.stats().await;
             assert_eq!(stats.vector_count, 5);
 
             // Should be able to search
             let query = normalize(&[1.0, 2.0, 3.0, 4.0]);
-            let results = tenant.search(&query, 3, None);
+            let results = tenant.search(&query, 3, None).await;
             assert!(!results.is_empty());
         }
     }

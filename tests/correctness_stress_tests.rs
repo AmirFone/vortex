@@ -12,9 +12,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Barrier;
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::mock::{MockBlockStorage, MockStorageConfig};
-use vectordb::tenant::TenantState;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
+use vortex::tenant::TenantState;
 
 // =============================================================================
 // TEST CONFIGURATION
@@ -83,7 +83,7 @@ async fn verify_no_data_loss_under_concurrent_writes() {
     // Flush to HNSW
     tenant.flush_to_hnsw(&*storage).await.unwrap();
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     let inserted = successful_inserts.load(Ordering::Relaxed);
 
     println!("\n=== No Data Loss Under Concurrent Writes ===");
@@ -103,7 +103,7 @@ async fn verify_no_data_loss_under_concurrent_writes() {
     for id in all_ids.iter().take(100) {
         // Sample check
         let query = normalize(&random_vector(TEST_DIMS));
-        let results = tenant.search(&query, 1000, Some(500));
+        let results = tenant.search(&query, 1000, Some(500)).await;
         if results.iter().any(|r| r.id == *id) {
             found_count += 1;
         }
@@ -146,7 +146,7 @@ async fn verify_no_duplicate_ids() {
     println!("Second batch (duplicates): inserted {} vectors", result2.count);
 
     // Verify no duplicates in storage
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(stats.vector_count, 100, "Should have exactly 100 unique vectors");
     assert_eq!(result2.count, 0, "Duplicate inserts should be rejected");
 
@@ -176,7 +176,7 @@ async fn verify_search_finds_all_inserted() {
     // Search for each inserted vector using itself as query
     let mut found_count = 0;
     for (id, vec) in &inserted_vectors {
-        let results = tenant.search(vec, 10, Some(200));
+        let results = tenant.search(vec, 10, Some(200)).await;
         if results.iter().any(|r| r.id == *id) {
             found_count += 1;
         }
@@ -224,6 +224,7 @@ async fn verify_recall_above_threshold() {
         // Get HNSW results
         let hnsw_results: Vec<u64> = tenant
             .search(&query, k, Some(200))
+            .await
             .iter()
             .map(|r| r.id)
             .collect();
@@ -300,14 +301,14 @@ async fn verify_hnsw_connectivity_after_stress() {
     println!("\n=== HNSW Connectivity After Stress ===");
 
     // Verify all nodes are reachable via search
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     println!("HNSW nodes: {}", stats.hnsw_nodes);
 
     // Test searches from random queries
     let mut successful_searches = 0;
     for _ in 0..100 {
         let query = normalize(&random_vector(TEST_DIMS));
-        let results = tenant.search(&query, 10, Some(100));
+        let results = tenant.search(&query, 10, Some(100)).await;
         if !results.is_empty() {
             successful_searches += 1;
         }
@@ -347,7 +348,7 @@ async fn verify_entry_point_valid() {
     let mut all_passed = true;
     for i in 0..100 {
         let query = normalize(&random_vector(TEST_DIMS));
-        let results = tenant.search(&query, 10, None);
+        let results = tenant.search(&query, 10, None).await;
         if results.is_empty() {
             println!("Search {} returned empty results!", i);
             all_passed = false;
@@ -405,7 +406,7 @@ async fn verify_recovery_after_stress() {
             .await
             .unwrap();
 
-        let stats = tenant.stats();
+        let stats = tenant.stats().await;
         println!("Phase 2: Recovered {} vectors", stats.vector_count);
 
         // Verify counts match
@@ -417,12 +418,13 @@ async fn verify_recovery_after_stress() {
 
         // Verify searches work
         let query = normalize(&random_vector(TEST_DIMS));
-        let results = tenant.search(&query, 10, None);
+        let results = tenant.search(&query, 10, None).await;
         assert!(!results.is_empty(), "Search should return results after recovery");
 
         // Verify all IDs are searchable
         let all_results: Vec<u64> = tenant
             .search(&query, 500, Some(500))
+            .await
             .iter()
             .map(|r| r.id)
             .collect();
@@ -518,7 +520,7 @@ async fn verify_no_phantom_vectors() {
 
         // Search with high k to get all vectors
         let query = normalize(&random_vector(TEST_DIMS));
-        let results = tenant.search(&query, 200, Some(500));
+        let results = tenant.search(&query, 200, Some(500)).await;
 
         let result_ids: HashSet<u64> = results.iter().map(|r| r.id).collect();
 
@@ -583,7 +585,7 @@ async fn verify_consistency_under_concurrent_read_write() {
 
         for _ in 0..100 {
             let query = normalize(&random_vector(TEST_DIMS));
-            let results = read_tenant.search(&query, 10, None);
+            let results = read_tenant.search(&query, 10, None).await;
             if !results.is_empty() {
                 successful_reads += 1;
             } else {

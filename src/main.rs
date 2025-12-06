@@ -1,6 +1,6 @@
 //! VectorDB Server Entry Point
 
-use vectordb::{Config, VectorEngine, api};
+use vortex::{Config, VectorEngine, api};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -8,7 +8,7 @@ async fn main() -> anyhow::Result<()> {
     // Initialize logging
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,vectordb=debug".into()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,vortex=debug".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();

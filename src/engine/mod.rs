@@ -93,13 +93,13 @@ impl VectorEngine {
         ef: Option<usize>,
     ) -> anyhow::Result<Vec<SearchResult>> {
         let tenant = self.get_or_create_tenant(tenant_id).await?;
-        Ok(tenant.search(&query, k, ef))
+        Ok(tenant.search(&query, k, ef).await)
     }
 
     /// Get tenant stats
     pub async fn stats(&self, tenant_id: u64) -> anyhow::Result<TenantStats> {
         let tenant = self.get_or_create_tenant(tenant_id).await?;
-        Ok(tenant.stats())
+        Ok(tenant.stats().await)
     }
 
     /// Flush all tenants

@@ -8,11 +8,16 @@ use rand::Rng;
 use std::cmp::Ordering;
 
 /// Insert a node into the HNSW index
+/// Optimized: Pre-computes query vector before acquiring lock to reduce lock hold time
 pub fn insert_node(index: &HnswIndex, vector_index: u32, vectors: &VectorStore) {
     let config = index.config();
 
     // Generate random level for this node
     let level = random_level(config.ml);
+
+    // Pre-compute query vector BEFORE acquiring any locks
+    // This reduces lock hold time significantly
+    let query_vec = get_vector(vectors, vector_index);
 
     // Create the new node
     let node = HnswNode::new(vector_index, level);
@@ -37,7 +42,7 @@ pub fn insert_node(index: &HnswIndex, vector_index: u32, vectors: &VectorStore) 
 
     // Traverse from top to the node's level + 1 (greedy search)
     for l in (level + 1..=current_max_level).rev() {
-        current = greedy_search_layer(&nodes, &get_vector(vectors, vector_index), current, l, vectors);
+        current = greedy_search_layer(&nodes, &query_vec, current, l, vectors);
     }
 
     // Add the node before we start connecting it
@@ -48,7 +53,7 @@ pub fn insert_node(index: &HnswIndex, vector_index: u32, vectors: &VectorStore) 
         // Find ef_construction nearest neighbors at this level
         let candidates = search_layer(
             &nodes,
-            &get_vector(vectors, vector_index),
+            &query_vec,
             current,
             config.ef_construction,
             l,

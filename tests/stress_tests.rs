@@ -16,9 +16,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Barrier;
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::mock::{MockBlockStorage, MockStorageConfig};
-use vectordb::tenant::TenantState;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
+use vortex::tenant::TenantState;
 
 // =============================================================================
 // TEST CONFIGURATION
@@ -226,7 +226,7 @@ async fn run_mixed_workload_test(
             write_latencies.push(latency);
         } else {
             let query = normalize(&random_vector(TEST_DIMS));
-            let (latency, _) = common::measure_latency(|| tenant.search(&query, 10, None));
+            let (latency, _) = common::measure_latency_async(|| tenant.search(&query, 10, None)).await;
             read_latencies.push(latency);
         }
     }
@@ -316,7 +316,7 @@ async fn stress_insert_10k_vectors() {
     histogram.print_summary("Batch Insert");
 
     // Check stats
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(stats.vector_count, MEDIUM_SCALE_COUNT as u64);
 
     // Performance target: >1000 vec/s
@@ -363,7 +363,7 @@ async fn stress_insert_100k_vectors() {
     );
     histogram.print_summary("Batch Insert");
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(stats.vector_count, LARGE_SCALE_COUNT as u64);
 }
 
@@ -400,7 +400,7 @@ async fn stress_search_10k_index() {
 
     for _ in 0..num_searches {
         let query = normalize(&random_vector(TEST_DIMS));
-        let (latency, results) = common::measure_latency(|| tenant.search(&query, 10, None));
+        let (latency, results) = common::measure_latency_async(|| tenant.search(&query, 10, None)).await;
         latencies.push(latency);
         assert!(!results.is_empty());
     }
@@ -451,7 +451,7 @@ async fn stress_large_write_buffer_10k() {
     let mut search_latencies = Vec::new();
     for _ in 0..100 {
         let query = normalize(&random_vector(TEST_DIMS));
-        let (latency, _) = common::measure_latency(|| tenant.search(&query, 10, None));
+        let (latency, _) = common::measure_latency_async(|| tenant.search(&query, 10, None)).await;
         search_latencies.push(latency);
     }
 
@@ -488,7 +488,7 @@ async fn stress_search_during_flush() {
         let mut latencies = Vec::new();
         for _ in 0..100 {
             let query = normalize(&random_vector(TEST_DIMS));
-            let (latency, _) = common::measure_latency(|| tenant_search.search(&query, 10, None));
+            let (latency, _) = common::measure_latency_async(|| tenant_search.search(&query, 10, None)).await;
             latencies.push(latency);
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -550,7 +550,7 @@ async fn stress_concurrent_flush() {
     assert!(result1.is_ok());
     assert!(result2.is_ok());
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     println!("Final stats: {} vectors in HNSW", stats.hnsw_nodes);
 }
 
@@ -592,11 +592,11 @@ async fn stress_10_tenants_concurrent() {
             let mut search_latencies = Vec::new();
             for _ in 0..50 {
                 let query = normalize(&random_vector(TEST_DIMS));
-                let (latency, _) = common::measure_latency(|| tenant.search(&query, 10, None));
+                let (latency, _) = common::measure_latency_async(|| tenant.search(&query, 10, None)).await;
                 search_latencies.push(latency);
             }
 
-            (latencies, search_latencies, tenant.stats())
+            (latencies, search_latencies, tenant.stats().await)
         });
 
         handles.push(handle);
@@ -657,8 +657,8 @@ async fn stress_tenant_isolation_under_load() {
 
     // Verify isolation
     let query = normalize(&random_vector(TEST_DIMS));
-    let results1 = tenant1.search(&query, 10, None);
-    let results2 = tenant2.search(&query, 10, None);
+    let results1 = tenant1.search(&query, 10, None).await;
+    let results2 = tenant2.search(&query, 10, None).await;
 
     println!("\n=== Tenant Isolation Test ===");
     println!("Tenant 1 results: {:?}", results1.iter().map(|r| r.id).collect::<Vec<_>>());

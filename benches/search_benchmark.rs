@@ -1,8 +1,8 @@
 //! Performance benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use vectordb::storage::mock::{create_temp_storage, MockStorageConfig};
-use vectordb::{Config, VectorEngine};
+use vortex::storage::mock::{create_temp_storage, MockStorageConfig};
+use vortex::{Config, VectorEngine};
 
 fn normalize(v: &[f32]) -> Vec<f32> {
     let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -26,7 +26,7 @@ fn bench_write_latency(c: &mut Criterion) {
     // Setup
     let (engine, _) = rt.block_on(async {
         let storage = create_temp_storage(MockStorageConfig::fast()).unwrap();
-        let config = vectordb::config::EngineConfig::default();
+        let config = vortex::config::EngineConfig::default();
         let engine = VectorEngine::new(config, storage).await.unwrap();
         (engine, ())
     });
@@ -52,7 +52,7 @@ fn bench_write_batch_latency(c: &mut Criterion) {
 
     let (engine, _) = rt.block_on(async {
         let storage = create_temp_storage(MockStorageConfig::fast()).unwrap();
-        let config = vectordb::config::EngineConfig::default();
+        let config = vortex::config::EngineConfig::default();
         let engine = VectorEngine::new(config, storage).await.unwrap();
         (engine, ())
     });
@@ -78,7 +78,7 @@ fn bench_search_latency(c: &mut Criterion) {
 
     let engine = rt.block_on(async {
         let storage = create_temp_storage(MockStorageConfig::fast()).unwrap();
-        let config = vectordb::config::EngineConfig::default();
+        let config = vortex::config::EngineConfig::default();
         let engine = VectorEngine::new(config, storage).await.unwrap();
 
         // Pre-populate with vectors

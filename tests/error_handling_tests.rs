@@ -10,10 +10,10 @@ mod common;
 
 use std::sync::Arc;
 
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::BlockStorage;
-use vectordb::tenant::TenantState;
-use vectordb::wal::Wal;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::BlockStorage;
+use vortex::tenant::TenantState;
+use vortex::wal::Wal;
 
 use common::{
     reopen_storage, seeded_vector, temp_storage, temp_storage_with_path, truncate_file,
@@ -250,7 +250,7 @@ async fn test_corrupted_id_map() {
     match result {
         Ok(tenant) => {
             // If recovered, should have vectors
-            assert!(tenant.stats().vector_count > 0);
+            assert!(tenant.stats().await.vector_count > 0);
         }
         Err(_) => {
             // Error is acceptable for corrupted data
@@ -293,7 +293,7 @@ async fn test_missing_wal_file() {
     match result {
         Ok(tenant) => {
             // If recovered without WAL, data may be lost but should be consistent
-            let stats = tenant.stats();
+            let stats = tenant.stats().await;
             // Could have data from HNSW or empty
             assert!(stats.vector_count >= 0);
         }
@@ -340,7 +340,7 @@ async fn test_truncated_hnsw_file() {
     match result {
         Ok(tenant) => {
             // Recovered - vectors should come from WAL
-            assert!(tenant.stats().vector_count > 0, "Should recover from WAL");
+            assert!(tenant.stats().await.vector_count > 0, "Should recover from WAL");
         }
         Err(_) => {
             // Error is acceptable
@@ -389,7 +389,7 @@ async fn test_continue_after_partial_failure() {
 
     // Should have at least first and third batches
     assert!(
-        tenant.stats().vector_count >= 20,
+        tenant.stats().await.vector_count >= 20,
         "Should recover and continue operating"
     );
 }
@@ -416,7 +416,7 @@ async fn test_search_during_write_failures() {
 
     // Search should still work
     let query = seeded_vector(4, 0);
-    let results = tenant.search(&query, 10, None);
+    let results = tenant.search(&query, 10, None).await;
     assert!(!results.is_empty(), "Search should work during write failures");
 }
 

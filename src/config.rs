@@ -21,10 +21,10 @@ impl Config {
             "mock" => StorageConfig::Mock {
                 ebs_root: std::env::var("EBS_ROOT")
                     .map(PathBuf::from)
-                    .unwrap_or_else(|_| PathBuf::from("/tmp/vectordb/ebs")),
+                    .unwrap_or_else(|_| PathBuf::from("/tmp/vortex/ebs")),
                 s3_root: std::env::var("S3_ROOT")
                     .map(PathBuf::from)
-                    .unwrap_or_else(|_| PathBuf::from("/tmp/vectordb/s3")),
+                    .unwrap_or_else(|_| PathBuf::from("/tmp/vortex/s3")),
                 simulate_latency: std::env::var("SIMULATE_LATENCY")
                     .map(|v| v == "true")
                     .unwrap_or(false),
@@ -35,7 +35,7 @@ impl Config {
                     .map(PathBuf::from)
                     .unwrap_or_else(|_| PathBuf::from("/ebs")),
                 s3_bucket: std::env::var("S3_BUCKET")
-                    .unwrap_or_else(|_| "vectordb-bucket".to_string()),
+                    .unwrap_or_else(|_| "vortex-bucket".to_string()),
             },
             _ => anyhow::bail!("Unknown storage mode: {}", storage_mode),
         };

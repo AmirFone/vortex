@@ -20,9 +20,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Barrier;
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::mock::{MockBlockStorage, MockStorageConfig};
-use vectordb::tenant::TenantState;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
+use vortex::tenant::TenantState;
 
 const TEST_DIMS: usize = 384;
 const BATCH_SIZE: usize = 100;
@@ -95,7 +95,7 @@ async fn simulate_rag_workload() {
             let query = normalize(&random_vector(TEST_DIMS));
 
             let (latency, results) =
-                common::measure_latency(|| tenant.search(&query, k, Some(ef)));
+                common::measure_latency_async(|| tenant.search(&query, k, Some(ef))).await;
             search_latencies.push(latency);
 
             // Calculate recall
@@ -118,7 +118,7 @@ async fn simulate_rag_workload() {
     }
 
     // Verify performance targets
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(stats.vector_count, total_vectors as u64);
     println!("\nRAG workload simulation completed successfully!");
 }
@@ -196,7 +196,7 @@ async fn simulate_streaming_workload() {
             while reader_running.load(Ordering::Relaxed) {
                 let query = normalize(&random_vector(TEST_DIMS));
                 let (latency, results) =
-                    common::measure_latency(|| reader_tenant.search(&query, 10, None));
+                    common::measure_latency_async(|| reader_tenant.search(&query, 10, None)).await;
 
                 if !results.is_empty() {
                     latencies.push(latency);
@@ -234,7 +234,7 @@ async fn simulate_streaming_workload() {
     write_hist.print_summary("Write (batch of 10)");
     read_hist.print_summary("Read (search k=10)");
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     println!("\nWrite buffer size: {}", stats.write_buffer_size);
     println!("HNSW nodes: {}", stats.hnsw_nodes);
 
@@ -299,7 +299,7 @@ async fn simulate_multi_tenant_workload() {
             // Search phase
             for _ in 0..100 {
                 let query = normalize(&random_vector(TEST_DIMS));
-                let (latency, _) = common::measure_latency(|| tenant.search(&query, 10, None));
+                let (latency, _) = common::measure_latency_async(|| tenant.search(&query, 10, None)).await;
                 search_latencies.push(latency);
             }
 
@@ -308,7 +308,7 @@ async fn simulate_multi_tenant_workload() {
                 insert_histogram: LatencyHistogram::from_latencies(insert_latencies),
                 search_histogram: LatencyHistogram::from_latencies(search_latencies),
                 flush_duration,
-                final_stats: tenant.stats(),
+                final_stats: tenant.stats().await,
             }
         }));
     }
@@ -404,7 +404,7 @@ async fn simulate_burst_traffic() {
     let baseline_start = Instant::now();
     while baseline_start.elapsed() < Duration::from_secs(5) {
         let query = normalize(&random_vector(TEST_DIMS));
-        let (latency, _) = common::measure_latency(|| tenant.search(&query, 10, None));
+        let (latency, _) = common::measure_latency_async(|| tenant.search(&query, 10, None)).await;
         baseline_latencies.push(latency);
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -414,7 +414,7 @@ async fn simulate_burst_traffic() {
     let burst_start = Instant::now();
     while burst_start.elapsed() < Duration::from_secs(3) {
         let query = normalize(&random_vector(TEST_DIMS));
-        let (latency, _) = common::measure_latency(|| tenant.search(&query, 10, None));
+        let (latency, _) = common::measure_latency_async(|| tenant.search(&query, 10, None)).await;
         burst_latencies.push(latency);
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -424,7 +424,7 @@ async fn simulate_burst_traffic() {
     let recovery_start = Instant::now();
     while recovery_start.elapsed() < Duration::from_secs(5) {
         let query = normalize(&random_vector(TEST_DIMS));
-        let (latency, _) = common::measure_latency(|| tenant.search(&query, 10, None));
+        let (latency, _) = common::measure_latency_async(|| tenant.search(&query, 10, None)).await;
         recovery_latencies.push(latency);
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -515,7 +515,7 @@ async fn simulate_stability_test() {
 
         while reader_running.load(Ordering::Relaxed) {
             let query = normalize(&random_vector(TEST_DIMS));
-            let (latency, _) = common::measure_latency(|| reader_tenant.search(&query, 10, None));
+            let (latency, _) = common::measure_latency_async(|| reader_tenant.search(&query, 10, None)).await;
             latency_samples.push(latency);
             reader_searches.fetch_add(1, Ordering::Relaxed);
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -543,7 +543,7 @@ async fn simulate_stability_test() {
     while start.elapsed() < test_duration {
         tokio::time::sleep(sample_interval).await;
 
-        let stats = tenant.stats();
+        let stats = tenant.stats().await;
         let elapsed = start.elapsed().as_secs();
 
         let sample = StabilitySample {
@@ -613,7 +613,7 @@ struct TenantMetrics {
     insert_histogram: LatencyHistogram,
     search_histogram: LatencyHistogram,
     flush_duration: Duration,
-    final_stats: vectordb::tenant::TenantStats,
+    final_stats: vortex::tenant::TenantStats,
 }
 
 #[derive(Debug)]

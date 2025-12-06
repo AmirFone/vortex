@@ -83,51 +83,9 @@ impl VectorStore {
     }
 
     /// Append a single vector, returns its index
+    /// Delegates to append_batch() for consistent, race-free implementation
     pub async fn append(&self, vector: &[f32]) -> StorageResult<u32> {
-        debug_assert_eq!(vector.len(), self.dims);
-
-        let index = self.count.fetch_add(1, Ordering::SeqCst) as u32;
-        let offset = HEADER_SIZE + (index as usize) * self.entry_size;
-
-        // Serialize vector
-        let mut data = Vec::with_capacity(self.entry_size);
-        for &val in vector {
-            data.extend_from_slice(&val.to_le_bytes());
-        }
-
-        // Read current file content
-        let mut file_data = if self.storage.exists(&self.path).await? {
-            self.storage.read(&self.path).await?
-        } else {
-            Vec::new()
-        };
-
-        // Ensure file is large enough
-        let new_size = offset + self.entry_size;
-        if file_data.len() < new_size {
-            file_data.resize(new_size, 0);
-        }
-
-        // Write vector data
-        file_data[offset..offset + self.entry_size].copy_from_slice(&data);
-
-        // Update header with new count
-        let header = VectorStoreHeader {
-            magic: VECTOR_STORE_MAGIC,
-            version: 1,
-            dims: self.dims as u32,
-            count: self.count.load(Ordering::SeqCst),
-            _reserved: [0; 44],
-        };
-        file_data[..HEADER_SIZE].copy_from_slice(&header.to_bytes());
-
-        self.storage.write(&self.path, &file_data).await?;
-        self.storage.sync(&self.path).await?;
-
-        // Refresh mmap
-        *self.mmap.write() = self.storage.mmap(&self.path)?;
-
-        Ok(index)
+        self.append_batch(&[vector.to_vec()]).await
     }
 
     /// Append multiple vectors, returns starting index
@@ -170,8 +128,12 @@ impl VectorStore {
         // Single fsync for entire batch
         self.storage.sync(&self.path).await?;
 
-        // Refresh mmap
-        *self.mmap.write() = self.storage.mmap(&self.path)?;
+        // Refresh mmap - MUST use blocking write() to guarantee data visibility
+        // Using try_write() can cause silent data loss if readers are active
+        {
+            let mut mmap_guard = self.mmap.write();
+            *mmap_guard = self.storage.mmap(&self.path)?;
+        }
 
         Ok(start_index)
     }

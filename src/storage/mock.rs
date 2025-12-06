@@ -89,6 +89,10 @@ impl MockBlockStorage {
     }
 
     async fn simulate_latency(&self, base: Duration) {
+        // Always yield to the runtime to allow other tasks to progress
+        // This is critical for cooperative multitasking in single-threaded runtimes
+        tokio::task::yield_now().await;
+
         if base.is_zero() {
             return;
         }
@@ -108,6 +112,8 @@ impl MockBlockStorage {
 #[async_trait]
 impl BlockStorage for MockBlockStorage {
     async fn write(&self, path: &str, data: &[u8]) -> StorageResult<()> {
+        // Yield to runtime for cooperative scheduling
+        tokio::task::yield_now().await;
         let full_path = self.full_path(path);
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent)?;
@@ -120,6 +126,8 @@ impl BlockStorage for MockBlockStorage {
     }
 
     async fn write_at(&self, path: &str, offset: usize, data: &[u8]) -> StorageResult<()> {
+        // Yield to runtime for cooperative scheduling
+        tokio::task::yield_now().await;
         let full_path = self.full_path(path);
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent)?;
@@ -145,6 +153,8 @@ impl BlockStorage for MockBlockStorage {
     }
 
     async fn append(&self, path: &str, data: &[u8]) -> StorageResult<u64> {
+        // Yield to runtime for cooperative scheduling
+        tokio::task::yield_now().await;
         let full_path = self.full_path(path);
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent)?;
@@ -189,6 +199,8 @@ impl BlockStorage for MockBlockStorage {
     }
 
     async fn exists(&self, path: &str) -> StorageResult<bool> {
+        // Yield to runtime for cooperative scheduling
+        tokio::task::yield_now().await;
         Ok(self.full_path(path).exists())
     }
 

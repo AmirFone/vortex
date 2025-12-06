@@ -9,10 +9,10 @@
 
 mod common;
 
-use vectordb::hnsw::HnswConfig;
-use vectordb::storage::BlockStorage;
-use vectordb::tenant::TenantState;
-use vectordb::wal::Wal;
+use vortex::hnsw::HnswConfig;
+use vortex::storage::BlockStorage;
+use vortex::tenant::TenantState;
+use vortex::wal::Wal;
 
 use common::{normalize, random_vector, seeded_vector, temp_storage};
 
@@ -31,7 +31,7 @@ async fn test_search_empty_index() {
         .unwrap();
 
     let query = random_vector(4);
-    let results = tenant.search(&query, 10, None);
+    let results = tenant.search(&query, 10, None).await;
 
     assert!(results.is_empty(), "Search on empty index should return empty");
 }
@@ -61,7 +61,7 @@ async fn test_stats_new_tenant() {
         .await
         .unwrap();
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(stats.tenant_id, 1);
     assert_eq!(stats.vector_count, 0);
     assert_eq!(stats.hnsw_nodes, 0);
@@ -117,7 +117,7 @@ async fn test_search_k_zero() {
 
     // Search with k=0
     let query = random_vector(4);
-    let results = tenant.search(&query, 0, None);
+    let results = tenant.search(&query, 0, None).await;
 
     assert!(results.is_empty(), "k=0 should return empty results");
 }
@@ -140,7 +140,7 @@ async fn test_search_k_larger_than_total() {
 
     // Search with k=100 (much larger than 5)
     let query = random_vector(4);
-    let results = tenant.search(&query, 100, None);
+    let results = tenant.search(&query, 100, None).await;
 
     assert!(
         results.len() <= 5,
@@ -163,7 +163,7 @@ async fn test_single_vector_search() {
     tenant.upsert(vec![(100, vector.clone())]).await.unwrap();
 
     // Search for the same vector
-    let results = tenant.search(&vector, 10, None);
+    let results = tenant.search(&vector, 10, None).await;
 
     assert_eq!(results.len(), 1, "Should find the single vector");
     assert_eq!(results[0].id, 100);
@@ -191,7 +191,7 @@ async fn test_identical_vectors() {
         .unwrap();
 
     // Search
-    let results = tenant.search(&vector, 10, None);
+    let results = tenant.search(&vector, 10, None).await;
 
     assert!(results.len() >= 2, "Should find both identical vectors");
     // Both should have very high similarity
@@ -220,7 +220,7 @@ async fn test_search_ef_minimum() {
     tenant.flush_to_hnsw(&*storage).await.unwrap();
 
     let query = random_vector(4);
-    let results = tenant.search(&query, 5, Some(1));
+    let results = tenant.search(&query, 5, Some(1)).await;
 
     // Should still return results, though quality may be lower
     assert!(!results.is_empty(), "ef=1 should still return results");
@@ -244,7 +244,7 @@ async fn test_search_ef_very_large() {
 
     let query = random_vector(4);
     // Very large ef shouldn't crash
-    let results = tenant.search(&query, 5, Some(1_000_000));
+    let results = tenant.search(&query, 5, Some(1_000_000)).await;
 
     assert!(!results.is_empty(), "Large ef should still work");
 }
@@ -271,7 +271,7 @@ async fn test_large_batch_insertion() {
     let result = tenant.upsert(vectors).await.unwrap();
     assert_eq!(result.count, num_vectors);
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(stats.vector_count, num_vectors as u64);
 }
 
@@ -295,14 +295,14 @@ async fn test_ten_thousand_vectors() {
         tenant.upsert(vectors).await.unwrap();
     }
 
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert_eq!(stats.vector_count, num_vectors as u64);
 
     // Flush and verify search works
     tenant.flush_to_hnsw(&*storage).await.unwrap();
 
     let query = random_vector(4);
-    let results = tenant.search(&query, 10, None);
+    let results = tenant.search(&query, 10, None).await;
     assert!(!results.is_empty(), "Should find results in large index");
 }
 
@@ -325,7 +325,7 @@ async fn test_high_dimensional_vectors() {
     tenant.flush_to_hnsw(&*storage).await.unwrap();
 
     let query = random_vector(dims);
-    let results = tenant.search(&query, 5, None);
+    let results = tenant.search(&query, 5, None).await;
     assert!(!results.is_empty(), "Should work with 256 dimensions");
 }
 
@@ -346,7 +346,7 @@ async fn test_max_vector_id() {
     assert_eq!(result.count, 1);
 
     // Should be searchable
-    let results = tenant.search(&vector, 1, None);
+    let results = tenant.search(&vector, 1, None).await;
     assert_eq!(results[0].id, max_id, "Should handle u64::MAX ID");
 }
 
@@ -366,8 +366,8 @@ async fn test_max_tenant_id() {
         .collect();
     tenant.upsert(vectors).await.unwrap();
 
-    assert_eq!(tenant.stats().tenant_id, max_tenant);
-    assert_eq!(tenant.stats().vector_count, 5);
+    assert_eq!(tenant.stats().await.tenant_id, max_tenant);
+    assert_eq!(tenant.stats().await.vector_count, 5);
 }
 
 // ============================================================================
@@ -393,7 +393,7 @@ async fn test_nan_values() {
     tenant.upsert(vec![(101, nan_vec)]).await.unwrap();
 
     // Search shouldn't crash
-    let results = tenant.search(&normal, 10, None);
+    let results = tenant.search(&normal, 10, None).await;
     // May or may not include the NaN vector, but shouldn't crash
     assert!(!results.is_empty() || results.is_empty()); // Just verify no panic
 }
@@ -417,7 +417,7 @@ async fn test_infinity_values() {
     tenant.upsert(vec![(101, inf_vec)]).await.unwrap();
 
     // Search shouldn't crash
-    let results = tenant.search(&normal, 10, None);
+    let results = tenant.search(&normal, 10, None).await;
     assert!(!results.is_empty() || results.is_empty());
 }
 
@@ -440,7 +440,7 @@ async fn test_zero_vector() {
     tenant.upsert(vec![(101, zero_vec)]).await.unwrap();
 
     // Search with zero vector
-    let results = tenant.search(&[0.0, 0.0, 0.0, 0.0], 10, None);
+    let results = tenant.search(&[0.0, 0.0, 0.0, 0.0], 10, None).await;
     // Shouldn't crash
     assert!(results.is_empty() || !results.is_empty());
 }
@@ -461,7 +461,7 @@ async fn test_denormalized_floats() {
     tenant.upsert(vec![(100, normalized.clone())]).await.unwrap();
 
     // Should be searchable
-    let results = tenant.search(&normalized, 1, None);
+    let results = tenant.search(&normalized, 1, None).await;
     assert!(!results.is_empty(), "Denormalized floats should work");
 }
 
@@ -481,7 +481,7 @@ async fn test_large_float_values() {
     tenant.upsert(vec![(100, normalized.clone())]).await.unwrap();
 
     // Should be searchable
-    let results = tenant.search(&normalized, 1, None);
+    let results = tenant.search(&normalized, 1, None).await;
     assert!(!results.is_empty(), "Large float values should work after normalization");
 }
 
@@ -499,7 +499,7 @@ async fn test_negative_values() {
     let neg_vec = normalize(&[-1.0, -2.0, -3.0, -4.0]);
     tenant.upsert(vec![(100, neg_vec.clone())]).await.unwrap();
 
-    let results = tenant.search(&neg_vec, 1, None);
+    let results = tenant.search(&neg_vec, 1, None).await;
     assert!(!results.is_empty());
     assert!(
         results[0].similarity > 0.99,
@@ -531,7 +531,7 @@ async fn test_duplicate_vector_ids() {
 
     // Should have only 1 vector (not 2)
     // Note: Current implementation may skip duplicates
-    let stats = tenant.stats();
+    let stats = tenant.stats().await;
     assert!(
         stats.vector_count <= 2,
         "Duplicate handling should not create unbounded growth"
@@ -556,8 +556,8 @@ async fn test_many_tenants() {
             .collect();
         tenant.upsert(vectors).await.unwrap();
 
-        assert_eq!(tenant.stats().tenant_id, tenant_id);
-        assert_eq!(tenant.stats().vector_count, 5);
+        assert_eq!(tenant.stats().await.tenant_id, tenant_id);
+        assert_eq!(tenant.stats().await.vector_count, 5);
     }
 }
 
@@ -593,7 +593,7 @@ async fn test_mixed_sequential_and_batch() {
             .unwrap();
     }
 
-    assert_eq!(tenant.stats().vector_count, 20);
+    assert_eq!(tenant.stats().await.vector_count, 20);
 }
 
 /// Test: Search after multiple flushes
@@ -615,10 +615,10 @@ async fn test_multiple_flushes() {
         tenant.flush_to_hnsw(&*storage).await.unwrap();
     }
 
-    assert_eq!(tenant.stats().vector_count, 50);
+    assert_eq!(tenant.stats().await.vector_count, 50);
 
     // Search should work
     let query = random_vector(4);
-    let results = tenant.search(&query, 10, None);
+    let results = tenant.search(&query, 10, None).await;
     assert!(!results.is_empty());
 }
