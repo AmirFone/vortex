@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "A high-performance, ACID-compliant vector database with HNSW indexing"
 license = "MIT"
-repository = "https://github.com/yourusername/vortex"
+repository = "https://github.com/AmirFone/vortex"
 keywords = ["vector-database", "hnsw", "similarity-search", "embeddings"]
 categories = ["database", "data-structures"]
 

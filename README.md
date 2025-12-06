@@ -33,7 +33,7 @@ Benchmarks run on 384-dimensional normalized vectors:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/vortex.git
+git clone https://github.com/AmirFone/vortex.git
 cd vortex
 
 # Build in release mode
