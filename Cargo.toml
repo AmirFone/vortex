@@ -1,0 +1,80 @@
+[package]
+name = "vortex"
+version = "0.1.0"
+edition = "2021"
+description = "A high-performance, ACID-compliant vector database with HNSW indexing"
+license = "MIT"
+repository = "https://github.com/yourusername/vortex"
+keywords = ["vector-database", "hnsw", "similarity-search", "embeddings"]
+categories = ["database", "data-structures"]
+
+[features]
+default = ["mock-storage"]
+mock-storage = []
+aws-storage = ["aws-config", "aws-sdk-s3"]
+
+[dependencies]
+# === ASYNC RUNTIME ===
+tokio = { version = "1.35", features = [
+    "full",
+    "sync",
+    "fs",
+    "time",
+    "macros",
+] }
+
+# === HTTP SERVER ===
+axum = { version = "0.7", features = ["macros"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "timeout"] }
+
+# === SERIALIZATION ===
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# === AWS (Optional) ===
+aws-config = { version = "1.1", optional = true }
+aws-sdk-s3 = { version = "1.15", optional = true }
+
+# === FILE I/O ===
+memmap2 = "0.9"
+tempfile = "3.10"
+
+# === CONCURRENCY ===
+parking_lot = "0.12"
+dashmap = "5.5"
+
+# === HNSW ===
+rand = "0.8"
+ordered-float = "4.2"
+
+# === UTILITIES ===
+crc32fast = "1.3"
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+chrono = { version = "0.4", features = ["serde"] }
+bytes = "1.5"
+async-trait = "0.1"
+
+[dev-dependencies]
+criterion = "0.5"
+tokio-test = "0.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = true
+codegen-units = 1
+
+[[bench]]
+name = "search_benchmark"
+harness = false
+
+[[bench]]
+name = "performance_benchmarks"
+harness = false
