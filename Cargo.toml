@@ -88,3 +88,15 @@ harness = false
 [[bin]]
 name = "simulate"
 path = "src/bin/simulate.rs"
+
+[[bin]]
+name = "s3_test"
+path = "src/bin/s3_test.rs"
+
+[[bin]]
+name = "hybrid_benchmark"
+path = "src/bin/hybrid_benchmark.rs"
+
+[[bin]]
+name = "cloud_benchmark"
+path = "src/bin/cloud_benchmark.rs"
