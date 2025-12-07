@@ -51,15 +51,20 @@ impl S3ObjectStorage {
 
             if !exists {
                 // Create the bucket
-                let constraint = BucketLocationConstraint::from(region);
-                let cfg = CreateBucketConfiguration::builder()
-                    .location_constraint(constraint)
-                    .build();
+                // Note: us-east-1 is special - don't specify LocationConstraint for it
+                let request = client.create_bucket().bucket(bucket);
 
-                client
-                    .create_bucket()
-                    .bucket(bucket)
-                    .create_bucket_configuration(cfg)
+                let request = if region == "us-east-1" {
+                    request
+                } else {
+                    let constraint = BucketLocationConstraint::from(region);
+                    let cfg = CreateBucketConfiguration::builder()
+                        .location_constraint(constraint)
+                        .build();
+                    request.create_bucket_configuration(cfg)
+                };
+
+                request
                     .send()
                     .await
                     .map_err(|e| StorageError::Backend(format!("Failed to create bucket: {}", e)))?;
