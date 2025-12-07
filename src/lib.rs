@@ -13,6 +13,7 @@ pub mod tenant;
 pub mod engine;
 pub mod api;
 pub mod config;
+pub mod simulation;
 
 pub use config::Config;
 pub use engine::VectorEngine;
