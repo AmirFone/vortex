@@ -27,6 +27,26 @@ Benchmarks run on 384-dimensional normalized vectors:
 | Recall@10 (ef=200) | **100%** |
 | Concurrent Writers (2 threads) | **6,793 vectors/sec** |
 
+### AWS Cloud Benchmarks
+
+Production-grade benchmarks run on AWS EC2 with EBS storage (c6i.2xlarge: 8 vCPU, 16 GB RAM):
+
+| Metric | Value |
+|--------|-------|
+| Upsert Throughput | **423,476 vectors/sec** |
+| Search Throughput | **441.5 queries/sec** |
+| Upsert P50 Latency | **2.26ms** |
+| Upsert P99 Latency | **4.59ms** |
+| Search P50 Latency | **2.25ms** |
+| Search P99 Latency | **2.67ms** |
+
+Run your own cloud benchmark:
+```bash
+cargo run --release --bin cloud_benchmark --features aws-storage
+```
+
+See [docs/CLOUD_TESTING.md](docs/CLOUD_TESTING.md) for detailed cloud testing documentation.
+
 ## Quick Start
 
 ### Installation
