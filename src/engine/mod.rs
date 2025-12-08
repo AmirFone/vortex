@@ -4,7 +4,7 @@
 //! Manages tenants and coordinates background tasks.
 
 use crate::config::EngineConfig;
-use crate::index::{AnnIndexConfig, HnswParams};
+use crate::index::AnnIndexConfig;
 use crate::storage::StorageBackend;
 use crate::tenant::{SearchResult, TenantState, TenantStats, UpsertResult};
 use dashmap::DashMap;
@@ -25,13 +25,7 @@ pub struct VectorEngine {
 impl VectorEngine {
     /// Create a new engine
     pub async fn new(config: EngineConfig, storage: StorageBackend) -> anyhow::Result<Arc<Self>> {
-        let index_config = AnnIndexConfig::Hnsw(HnswParams {
-            m: config.hnsw_m,
-            m_max0: config.hnsw_m * 2,
-            ef_construction: config.hnsw_ef_construction,
-            ef_search: config.hnsw_ef_search,
-            ml: 1.0 / (config.hnsw_m as f64).ln(),
-        });
+        let index_config = config.create_index_config();
 
         let engine = Arc::new(Self {
             config: config.clone(),
