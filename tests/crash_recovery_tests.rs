@@ -7,7 +7,7 @@ mod common;
 
 use std::sync::Arc;
 
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::storage::BlockStorage;
 use vortex::tenant::TenantState;
 use vortex::wal::Wal;
@@ -104,7 +104,7 @@ async fn test_crash_at_various_truncation_points() {
 #[tokio::test]
 async fn test_empty_wal_recovery() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Create tenant (creates empty WAL)
     {
@@ -129,7 +129,7 @@ async fn test_empty_wal_recovery() {
 #[tokio::test]
 async fn test_corrupted_hnsw_recovery() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let hnsw_path = "tenant_1/index.hnsw";
 
     // Create tenant, insert vectors, flush to HNSW
@@ -189,7 +189,7 @@ async fn test_corrupted_hnsw_recovery() {
 #[tokio::test]
 async fn test_idempotent_recovery() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Create and populate tenant
     {
@@ -225,7 +225,7 @@ async fn test_idempotent_recovery() {
 #[tokio::test]
 async fn test_recovery_missing_id_map() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let id_map_path = "tenant_1/id_map.bin";
 
     // Create, populate, and flush tenant
@@ -264,7 +264,7 @@ async fn test_recovery_missing_id_map() {
 #[tokio::test]
 async fn test_recovery_corrupted_metadata() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let meta_path = "tenant_1/meta.json";
 
     // Create, populate, and flush tenant
@@ -308,7 +308,7 @@ async fn test_recovery_corrupted_metadata() {
 #[tokio::test]
 async fn test_recovery_mixed_hnsw_and_buffer() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Create tenant, insert first batch, flush, insert second batch, crash
     {
@@ -358,7 +358,7 @@ async fn test_recovery_mixed_hnsw_and_buffer() {
 #[tokio::test]
 async fn test_recovery_no_duplicates() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Insert same vector ID multiple times, then recover
     let vector_id = 999u64;
@@ -398,7 +398,7 @@ async fn test_recovery_no_duplicates() {
 async fn test_recovery_after_write_failure() {
     let (temp_dir, path, storage) = temp_storage_with_path();
     let failing_storage = Arc::new(FailingStorage::new(storage.clone()));
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Insert some vectors successfully
     {
@@ -443,7 +443,7 @@ async fn test_recovery_after_write_failure() {
 async fn test_recovery_after_sync_failure() {
     let (temp_dir, path, storage) = temp_storage_with_path();
     let failing_storage = Arc::new(FailingStorage::new(storage.clone()));
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     {
         let tenant = TenantState::open(1, 4, failing_storage.clone(), config.clone())

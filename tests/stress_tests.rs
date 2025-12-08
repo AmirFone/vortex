@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Barrier;
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
 use vortex::tenant::TenantState;
 
@@ -46,7 +46,7 @@ const BATCH_SIZE: usize = 100;
 /// Helper to run concurrent writer stress test
 async fn run_concurrent_writers_test(num_threads: usize, vectors_per_thread: usize) -> StressTestResult {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -195,7 +195,7 @@ async fn run_mixed_workload_test(
     duration_secs: u64,
 ) -> MixedWorkloadResult {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -285,7 +285,7 @@ async fn stress_mixed_90_write_10_read() {
 #[tokio::test]
 async fn stress_insert_10k_vectors() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -328,7 +328,7 @@ async fn stress_insert_10k_vectors() {
 #[ignore] // Run with: cargo test stress_insert_100k_vectors -- --ignored --nocapture
 async fn stress_insert_100k_vectors() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -370,7 +370,7 @@ async fn stress_insert_100k_vectors() {
 #[tokio::test]
 async fn stress_search_10k_index() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -429,7 +429,7 @@ async fn stress_search_10k_index() {
 #[tokio::test]
 async fn stress_large_write_buffer_10k() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -465,7 +465,7 @@ async fn stress_large_write_buffer_10k() {
 #[tokio::test]
 async fn stress_search_during_flush() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -516,7 +516,7 @@ async fn stress_search_during_flush() {
 #[tokio::test]
 async fn stress_concurrent_flush() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -551,7 +551,7 @@ async fn stress_concurrent_flush() {
     assert!(result2.is_ok());
 
     let stats = tenant.stats().await;
-    println!("Final stats: {} vectors in HNSW", stats.hnsw_nodes);
+    println!("Final stats: {} vectors in HNSW", stats.index_nodes);
 }
 
 // =============================================================================
@@ -570,7 +570,7 @@ async fn stress_10_tenants_concurrent() {
     for tenant_id in 0..num_tenants {
         let storage = storage.clone();
         let handle = tokio::spawn(async move {
-            let config = HnswConfig::new(TEST_DIMS);
+            let config = test_index_config();
             let tenant = TenantState::open(tenant_id as u64, TEST_DIMS, storage.clone(), config)
                 .await
                 .unwrap();
@@ -633,7 +633,7 @@ async fn stress_tenant_isolation_under_load() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
 
     // Create two tenants with different data
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant1 = TenantState::open(1, TEST_DIMS, storage.clone(), config.clone())
         .await
         .unwrap();
@@ -684,7 +684,7 @@ async fn stress_background_flush_all_tenants() {
 
     let mut tenants = Vec::new();
     for tenant_id in 0..num_tenants {
-        let config = HnswConfig::new(TEST_DIMS);
+        let config = test_index_config();
         let tenant = Arc::new(
             TenantState::open(tenant_id, TEST_DIMS, storage.clone(), config)
                 .await
