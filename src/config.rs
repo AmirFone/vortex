@@ -1,6 +1,9 @@
 //! Configuration module
 
-use crate::storage::{StorageBackend, mock};
+use crate::index::AnnIndexConfig;
+#[cfg(feature = "diskann-index")]
+use crate::index::DiskAnnParams;
+use crate::storage::{mock, StorageBackend};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -69,6 +72,27 @@ impl Config {
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(300),
             ),
+            index_type: std::env::var("INDEX_TYPE").unwrap_or_else(|_| "hnsw".to_string()),
+            #[cfg(feature = "diskann-index")]
+            diskann_max_degree: std::env::var("DISKANN_MAX_DEGREE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(64),
+            #[cfg(feature = "diskann-index")]
+            diskann_alpha: std::env::var("DISKANN_ALPHA")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1.2),
+            #[cfg(feature = "diskann-index")]
+            diskann_build_beam: std::env::var("DISKANN_BUILD_BEAM")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(128),
+            #[cfg(feature = "diskann-index")]
+            diskann_search_beam: std::env::var("DISKANN_SEARCH_BEAM")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(64),
         };
 
         let api = ApiConfig {
@@ -136,6 +160,20 @@ pub struct EngineConfig {
     pub hnsw_ef_search: usize,
     pub flush_interval: Duration,
     pub backup_interval: Duration,
+    /// Index type selection (hnsw or diskann)
+    pub index_type: String,
+    /// DiskANN max degree (if using diskann)
+    #[cfg(feature = "diskann-index")]
+    pub diskann_max_degree: usize,
+    /// DiskANN alpha parameter
+    #[cfg(feature = "diskann-index")]
+    pub diskann_alpha: f32,
+    /// DiskANN build beam width
+    #[cfg(feature = "diskann-index")]
+    pub diskann_build_beam: usize,
+    /// DiskANN search beam width
+    #[cfg(feature = "diskann-index")]
+    pub diskann_search_beam: usize,
 }
 
 impl Default for EngineConfig {
@@ -143,10 +181,41 @@ impl Default for EngineConfig {
         Self {
             default_dims: 384,
             hnsw_m: 16,
-            hnsw_ef_construction: 500, // Increased from 200 for better recall
-            hnsw_ef_search: 200, // Increased from 100 for better search quality
+            hnsw_ef_construction: 500,
+            hnsw_ef_search: 200,
             flush_interval: Duration::from_secs(10),
             backup_interval: Duration::from_secs(300),
+            index_type: "hnsw".to_string(),
+            #[cfg(feature = "diskann-index")]
+            diskann_max_degree: 64,
+            #[cfg(feature = "diskann-index")]
+            diskann_alpha: 1.2,
+            #[cfg(feature = "diskann-index")]
+            diskann_build_beam: 128,
+            #[cfg(feature = "diskann-index")]
+            diskann_search_beam: 64,
+        }
+    }
+}
+
+impl EngineConfig {
+    /// Create AnnIndexConfig from engine config
+    pub fn create_index_config(&self) -> AnnIndexConfig {
+        match self.index_type.as_str() {
+            #[cfg(feature = "diskann-index")]
+            "diskann" => {
+                let params = DiskAnnParams {
+                    dims: self.default_dims,
+                    max_degree: self.diskann_max_degree,
+                    alpha: self.diskann_alpha,
+                    build_beam_width: self.diskann_build_beam,
+                    search_beam_width: self.diskann_search_beam,
+                    use_pq: false,
+                    pq_subspaces: 0,
+                };
+                AnnIndexConfig::DiskAnn(params)
+            }
+            _ => AnnIndexConfig::hnsw_with_m(self.hnsw_m),
         }
     }
 }
