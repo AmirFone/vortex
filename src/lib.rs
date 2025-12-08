@@ -9,6 +9,7 @@ pub mod storage;
 pub mod wal;
 pub mod vectors;
 pub mod hnsw;
+pub mod index;
 pub mod tenant;
 pub mod engine;
 pub mod api;
