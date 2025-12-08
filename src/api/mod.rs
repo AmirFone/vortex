@@ -139,7 +139,7 @@ async fn get_stats(
     Ok(Json(StatsResponse {
         tenant_id: stats.tenant_id,
         vector_count: stats.vector_count,
-        hnsw_nodes: stats.hnsw_nodes,
+        index_nodes: stats.index_nodes,
         write_buffer_size: stats.write_buffer_size,
         wal_sequence: stats.wal_sequence,
     }))
@@ -204,7 +204,7 @@ struct SearchResultItem {
 struct StatsResponse {
     tenant_id: u64,
     vector_count: u64,
-    hnsw_nodes: u64,
+    index_nodes: u64,
     write_buffer_size: usize,
     wal_sequence: u64,
 }

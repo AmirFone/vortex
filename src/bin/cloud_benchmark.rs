@@ -72,6 +72,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "c6i.xlarge" => 0.17,
         "c6i.2xlarge" => 0.34,
         "c6i.4xlarge" => 0.68,
+        "c6i.8xlarge" => 1.36,
+        "c6i.12xlarge" => 2.04,
+        "c6i.16xlarge" => 2.72,
         _ => 0.34,
     };
     let estimated_hours = 0.75; // ~45 minutes
@@ -306,6 +309,9 @@ async fn run_benchmark(
         "c6i.xlarge" => 0.17,
         "c6i.2xlarge" => 0.34,
         "c6i.4xlarge" => 0.68,
+        "c6i.8xlarge" => 1.36,
+        "c6i.12xlarge" => 2.04,
+        "c6i.16xlarge" => 2.72,
         _ => 0.34,
     };
     let actual_cost = (total_time.as_secs_f64() / 3600.0) * hourly_rate + 0.02;
