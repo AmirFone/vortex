@@ -12,6 +12,7 @@ categories = ["database", "data-structures"]
 default = ["mock-storage"]
 mock-storage = []
 aws-storage = ["aws-config", "aws-sdk-s3", "aws-sdk-ec2", "ctrlc", "uuid"]
+diskann-index = ["diskann-rs", "anndists"]
 
 [dependencies]
 # === ASYNC RUNTIME ===
@@ -38,6 +39,10 @@ aws-sdk-s3 = { version = "1.15", optional = true }
 aws-sdk-ec2 = { version = "1.95", optional = true }
 ctrlc = { version = "3.4", optional = true }
 uuid = { version = "1.0", features = ["v4"], optional = true }
+
+# === DiskANN (Optional) ===
+diskann-rs = { version = "0.3", optional = true }
+anndists = { version = "0.1", optional = true }
 
 # === CLI ===
 clap = { version = "4.5", features = ["derive"] }
@@ -92,11 +97,14 @@ path = "src/bin/simulate.rs"
 [[bin]]
 name = "s3_test"
 path = "src/bin/s3_test.rs"
+required-features = ["aws-storage"]
 
 [[bin]]
 name = "hybrid_benchmark"
 path = "src/bin/hybrid_benchmark.rs"
+required-features = ["aws-storage"]
 
 [[bin]]
 name = "cloud_benchmark"
 path = "src/bin/cloud_benchmark.rs"
+required-features = ["aws-storage"]
