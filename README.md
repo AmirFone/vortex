@@ -228,10 +228,10 @@ Vortex supports multiple ANN index backends via a pluggable architecture. Choose
 
 | Metric | HNSW | DiskANN | Winner |
 |--------|------|---------|--------|
-| Upsert Throughput | **423,476 vec/sec** | ~50,000 vec/sec | HNSW |
-| Search Throughput | **441.5 queries/sec** | ~300 queries/sec | HNSW |
-| Search P50 Latency | **2.25ms** | ~5-10ms | HNSW |
-| Search P99 Latency | **2.67ms** | ~15-25ms | HNSW |
+| Upsert Throughput | **423,476 vec/sec** | 59,478 vec/sec | HNSW |
+| Search Throughput | **441.5 queries/sec** | 274 queries/sec | HNSW |
+| Search P50 Latency | **2.25ms** | **1.09ms** | DiskANN |
+| Search P99 Latency | **2.67ms** | 45ms | HNSW |
 | Memory per 1M vectors | ~200 MB | **~20 MB** | DiskANN |
 | Max Dataset Size | ~10M vectors (RAM limited) | **Billions** | DiskANN |
 
@@ -261,12 +261,12 @@ In-memory Hierarchical Navigable Small World graph.
 
 Disk-based Vamana graph using the `diskann-rs` crate.
 
-- **Performance**: ~50,000 vectors/sec insert, ~300 queries/sec search
+- **Performance**: 59,478 vectors/sec insert, 274 queries/sec search
 - **Memory**: ~20 bytes per vector (10x lower than HNSW)
-- **Pros**: 10x lower memory, scales to billions of vectors
-- **Cons**: Higher query latency due to disk I/O
+- **Pros**: 10x lower memory, scales to billions of vectors, excellent P50 latency (1.09ms)
+- **Cons**: Higher P99 latency (45ms) due to graph build overhead
 
-> **Note**: DiskANN trades raw performance for memory efficiency. If your workload is memory-bound or requires massive scale, DiskANN is the right choice despite lower throughput.
+> **Note**: DiskANN trades raw throughput for memory efficiency. If your workload is memory-bound or requires massive scale, DiskANN is the right choice despite lower throughput.
 
 Enable DiskANN:
 ```bash
