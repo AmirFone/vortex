@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use tokio::time::{timeout, Duration};
 
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::tenant::TenantState;
 
 use common::{random_vector, seeded_vector, temp_storage};
@@ -27,7 +27,7 @@ use common::{random_vector, seeded_vector, temp_storage};
 #[tokio::test]
 async fn test_concurrent_upserts_same_tenant() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = Arc::new(
         TenantState::open(1, 4, storage.clone(), config)
@@ -70,7 +70,7 @@ async fn test_concurrent_upserts_same_tenant() {
 #[tokio::test]
 async fn test_concurrent_upsert_and_search() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = Arc::new(
         TenantState::open(1, 4, storage.clone(), config)
@@ -148,7 +148,7 @@ async fn test_concurrent_upsert_and_search() {
 #[tokio::test]
 async fn test_concurrent_upsert_and_flush() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = Arc::new(
         TenantState::open(1, 4, storage.clone(), config)
@@ -212,7 +212,7 @@ async fn test_concurrent_upsert_and_flush() {
 #[tokio::test]
 async fn test_multiple_readers_single_writer() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = Arc::new(
         TenantState::open(1, 4, storage.clone(), config)
@@ -280,7 +280,7 @@ async fn test_multiple_readers_single_writer() {
 #[tokio::test]
 async fn test_concurrent_different_tenants() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let num_tenants = 5;
     let vectors_per_tenant = 50;
@@ -329,7 +329,7 @@ async fn test_concurrent_different_tenants() {
 #[tokio::test]
 async fn test_no_cross_tenant_leakage() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Create two tenants with distinct vectors
     let tenant1 = Arc::new(
@@ -426,7 +426,7 @@ async fn test_no_cross_tenant_leakage() {
 #[tokio::test]
 async fn test_high_contention() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = Arc::new(
         TenantState::open(1, 4, storage.clone(), config)
@@ -480,7 +480,7 @@ async fn test_high_contention() {
 #[tokio::test]
 async fn test_rapid_sequential_operations() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -505,7 +505,7 @@ async fn test_rapid_sequential_operations() {
 #[tokio::test]
 async fn test_concurrent_stats_reads() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = Arc::new(
         TenantState::open(1, 4, storage.clone(), config)
