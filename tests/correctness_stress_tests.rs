@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Barrier;
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
 use vortex::tenant::TenantState;
 
@@ -30,7 +30,7 @@ const BATCH_SIZE: usize = 100;
 #[tokio::test]
 async fn verify_no_data_loss_under_concurrent_writes() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -90,7 +90,7 @@ async fn verify_no_data_loss_under_concurrent_writes() {
     println!("Expected: {} vectors", total_expected);
     println!("Successfully inserted: {} vectors", inserted);
     println!("Vectors in store: {}", stats.vector_count);
-    println!("Nodes in HNSW: {}", stats.hnsw_nodes);
+    println!("Nodes in HNSW: {}", stats.index_nodes);
 
     // Verify all expected vectors are present
     assert_eq!(
@@ -116,7 +116,7 @@ async fn verify_no_data_loss_under_concurrent_writes() {
 #[tokio::test]
 async fn verify_no_duplicate_ids() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -156,7 +156,7 @@ async fn verify_no_duplicate_ids() {
 #[tokio::test]
 async fn verify_search_finds_all_inserted() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -199,7 +199,7 @@ async fn verify_search_finds_all_inserted() {
 #[tokio::test]
 async fn verify_recall_above_threshold() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -263,7 +263,7 @@ async fn verify_recall_above_threshold() {
 #[tokio::test]
 async fn verify_hnsw_connectivity_after_stress() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -302,7 +302,7 @@ async fn verify_hnsw_connectivity_after_stress() {
 
     // Verify all nodes are reachable via search
     let stats = tenant.stats().await;
-    println!("HNSW nodes: {}", stats.hnsw_nodes);
+    println!("HNSW nodes: {}", stats.index_nodes);
 
     // Test searches from random queries
     let mut successful_searches = 0;
@@ -324,7 +324,7 @@ async fn verify_hnsw_connectivity_after_stress() {
 #[tokio::test]
 async fn verify_entry_point_valid() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -367,7 +367,7 @@ async fn verify_entry_point_valid() {
 async fn verify_recovery_after_stress() {
     let temp_dir = tempfile::tempdir().unwrap();
     let storage_path = temp_dir.path().to_path_buf();
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
 
     let mut inserted_ids: HashSet<u64> = HashSet::new();
 
@@ -445,7 +445,7 @@ async fn verify_recovery_after_stress() {
 #[tokio::test]
 async fn verify_wal_sequence_monotonic() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -487,7 +487,7 @@ async fn verify_wal_sequence_monotonic() {
 async fn verify_no_phantom_vectors() {
     let temp_dir = tempfile::tempdir().unwrap();
     let storage_path = temp_dir.path().to_path_buf();
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
 
     // Insert and then delete (via not inserting)
     let known_ids: HashSet<u64> = (0..100).collect();
@@ -551,7 +551,7 @@ async fn verify_no_phantom_vectors() {
 #[tokio::test]
 async fn verify_consistency_under_concurrent_read_write() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await

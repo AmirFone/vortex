@@ -16,7 +16,7 @@ use common::{generate_random_vectors, normalize, random_vector, LatencyHistogram
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Barrier;
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
 use vortex::tenant::TenantState;
 
@@ -35,7 +35,7 @@ const BATCH_SIZE: usize = 100;
 #[tokio::test]
 async fn profile_insert_path_breakdown() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -104,7 +104,7 @@ async fn profile_insert_path_breakdown() {
 #[tokio::test]
 async fn profile_wal_overhead() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -151,7 +151,7 @@ async fn profile_wal_overhead() {
 #[tokio::test]
 async fn profile_search_path_breakdown() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -193,7 +193,7 @@ async fn profile_search_path_breakdown() {
     let stats = tenant.stats().await;
     println!(
         "HNSW nodes: {}, Write buffer: {}",
-        stats.hnsw_nodes, stats.write_buffer_size
+        stats.index_nodes, stats.write_buffer_size
     );
 
     for ef in [100, 200] {
@@ -217,7 +217,7 @@ async fn profile_search_path_breakdown() {
 #[tokio::test]
 async fn profile_write_buffer_overhead() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -276,7 +276,7 @@ async fn profile_write_buffer_overhead() {
 /// - Index persistence
 #[tokio::test]
 async fn profile_flush_path_breakdown() {
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
 
     println!("\n=== Flush Path Breakdown ===");
 
@@ -304,7 +304,7 @@ async fn profile_flush_path_breakdown() {
 
         println!(
             "Flush {} vectors: total={:?}, per_vector={:?}, final_hnsw={}",
-            buffer_size, flush_duration, per_vector, stats.hnsw_nodes
+            buffer_size, flush_duration, per_vector, stats.index_nodes
         );
     }
 
@@ -335,7 +335,7 @@ async fn profile_flush_path_breakdown() {
         println!(
             "Round {}: flush 1000 into {} existing: {:?} ({:?}/vec)",
             round + 1,
-            stats.hnsw_nodes,
+            stats.index_nodes,
             duration,
             duration / 1000
         );
@@ -350,7 +350,7 @@ async fn profile_flush_path_breakdown() {
 #[tokio::test]
 async fn profile_lock_contention() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -464,7 +464,7 @@ async fn profile_lock_contention() {
 /// Profile ID map lookup overhead (should be O(1) with reverse map)
 #[tokio::test]
 async fn profile_id_map_lookup() {
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
 
     println!("\n=== ID Map Lookup Profile ===");
 
@@ -535,7 +535,7 @@ async fn profile_distance_computation() {
 
     // Compare with search which does fewer distance computations
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();

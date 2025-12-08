@@ -9,7 +9,7 @@
 
 mod common;
 
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::storage::BlockStorage;
 use vortex::tenant::TenantState;
 use vortex::wal::Wal;
@@ -24,7 +24,7 @@ use common::{normalize, random_vector, seeded_vector, temp_storage};
 #[tokio::test]
 async fn test_search_empty_index() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -40,7 +40,7 @@ async fn test_search_empty_index() {
 #[tokio::test]
 async fn test_flush_empty_buffer() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -55,7 +55,7 @@ async fn test_flush_empty_buffer() {
 #[tokio::test]
 async fn test_stats_new_tenant() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -64,7 +64,7 @@ async fn test_stats_new_tenant() {
     let stats = tenant.stats().await;
     assert_eq!(stats.tenant_id, 1);
     assert_eq!(stats.vector_count, 0);
-    assert_eq!(stats.hnsw_nodes, 0);
+    assert_eq!(stats.index_nodes, 0);
     assert_eq!(stats.write_buffer_size, 0);
     assert_eq!(stats.wal_sequence, 0);
 }
@@ -85,7 +85,7 @@ async fn test_empty_wal_replay() {
 #[tokio::test]
 async fn test_empty_upsert() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -103,7 +103,7 @@ async fn test_empty_upsert() {
 #[tokio::test]
 async fn test_search_k_zero() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -126,7 +126,7 @@ async fn test_search_k_zero() {
 #[tokio::test]
 async fn test_search_k_larger_than_total() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -152,7 +152,7 @@ async fn test_search_k_larger_than_total() {
 #[tokio::test]
 async fn test_single_vector_search() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -177,7 +177,7 @@ async fn test_single_vector_search() {
 #[tokio::test]
 async fn test_identical_vectors() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -207,7 +207,7 @@ async fn test_identical_vectors() {
 #[tokio::test]
 async fn test_search_ef_minimum() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -230,7 +230,7 @@ async fn test_search_ef_minimum() {
 #[tokio::test]
 async fn test_search_ef_very_large() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -257,7 +257,7 @@ async fn test_search_ef_very_large() {
 #[tokio::test]
 async fn test_large_batch_insertion() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -279,7 +279,7 @@ async fn test_large_batch_insertion() {
 #[tokio::test]
 async fn test_ten_thousand_vectors() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -311,7 +311,7 @@ async fn test_ten_thousand_vectors() {
 async fn test_high_dimensional_vectors() {
     let (_temp_dir, storage) = temp_storage();
     let dims = 256;
-    let config = HnswConfig::new(dims);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, dims, storage.clone(), config)
         .await
@@ -333,7 +333,7 @@ async fn test_high_dimensional_vectors() {
 #[tokio::test]
 async fn test_max_vector_id() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -354,7 +354,7 @@ async fn test_max_vector_id() {
 #[tokio::test]
 async fn test_max_tenant_id() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let max_tenant = u64::MAX;
 
     let tenant = TenantState::open(max_tenant, 4, storage.clone(), config)
@@ -378,7 +378,7 @@ async fn test_max_tenant_id() {
 #[tokio::test]
 async fn test_nan_values() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -402,7 +402,7 @@ async fn test_nan_values() {
 #[tokio::test]
 async fn test_infinity_values() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -425,7 +425,7 @@ async fn test_infinity_values() {
 #[tokio::test]
 async fn test_zero_vector() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -449,7 +449,7 @@ async fn test_zero_vector() {
 #[tokio::test]
 async fn test_denormalized_floats() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -469,7 +469,7 @@ async fn test_denormalized_floats() {
 #[tokio::test]
 async fn test_large_float_values() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -489,7 +489,7 @@ async fn test_large_float_values() {
 #[tokio::test]
 async fn test_negative_values() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -515,7 +515,7 @@ async fn test_negative_values() {
 #[tokio::test]
 async fn test_duplicate_vector_ids() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -542,7 +542,7 @@ async fn test_duplicate_vector_ids() {
 #[tokio::test]
 async fn test_many_tenants() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let num_tenants = 10;
 
@@ -565,7 +565,7 @@ async fn test_many_tenants() {
 #[tokio::test]
 async fn test_mixed_sequential_and_batch() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await
@@ -600,7 +600,7 @@ async fn test_mixed_sequential_and_batch() {
 #[tokio::test]
 async fn test_multiple_flushes() {
     let (_temp_dir, storage) = temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, storage.clone(), config)
         .await

@@ -10,7 +10,7 @@ mod common;
 
 use std::sync::Arc;
 
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::storage::BlockStorage;
 use vortex::tenant::TenantState;
 use vortex::wal::Wal;
@@ -29,7 +29,7 @@ use common::{
 async fn test_write_failure_during_upsert() {
     let (_temp_dir, storage) = temp_storage();
     let failing_storage = Arc::new(FailingStorage::new(storage.clone()));
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, failing_storage.clone(), config)
         .await
@@ -58,7 +58,7 @@ async fn test_write_failure_during_upsert() {
 async fn test_sync_failure_handling() {
     let (_temp_dir, storage) = temp_storage();
     let failing_storage = Arc::new(FailingStorage::new(storage.clone()));
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, failing_storage.clone(), config)
         .await
@@ -86,7 +86,7 @@ async fn test_sync_failure_handling() {
 #[tokio::test]
 async fn test_read_failure_during_recovery() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Create and populate tenant
     {
@@ -214,7 +214,7 @@ async fn test_corrupted_wal_sequence() {
 #[tokio::test]
 async fn test_corrupted_id_map() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let id_map_path = "tenant_1/id_map.bin";
 
     // Create and flush tenant
@@ -264,7 +264,7 @@ async fn test_corrupted_id_map() {
 #[tokio::test]
 async fn test_missing_wal_file() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let wal_path = "tenant_1/wal.log";
 
     // Create and flush tenant
@@ -309,7 +309,7 @@ async fn test_missing_wal_file() {
 #[tokio::test]
 async fn test_truncated_hnsw_file() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let hnsw_path = "tenant_1/index.hnsw";
 
     // Create and flush tenant
@@ -359,7 +359,7 @@ async fn test_truncated_hnsw_file() {
 async fn test_continue_after_partial_failure() {
     let (_temp_dir, storage) = temp_storage();
     let failing_storage = Arc::new(FailingStorage::new(storage.clone()));
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, failing_storage.clone(), config)
         .await
@@ -399,7 +399,7 @@ async fn test_continue_after_partial_failure() {
 async fn test_search_during_write_failures() {
     let (_temp_dir, storage) = temp_storage();
     let failing_storage = Arc::new(FailingStorage::new(storage.clone()));
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, failing_storage.clone(), config)
         .await
@@ -429,7 +429,7 @@ async fn test_search_during_write_failures() {
 async fn test_error_messages() {
     let (_temp_dir, storage) = temp_storage();
     let failing_storage = Arc::new(FailingStorage::new(storage.clone()));
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let tenant = TenantState::open(1, 4, failing_storage.clone(), config)
         .await

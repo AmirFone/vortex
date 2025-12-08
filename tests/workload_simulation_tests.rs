@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Barrier;
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
 use vortex::tenant::TenantState;
 
@@ -38,7 +38,7 @@ const BATCH_SIZE: usize = 100;
 #[tokio::test]
 async fn simulate_rag_workload() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = TenantState::open(1, TEST_DIMS, storage.clone(), config)
         .await
         .unwrap();
@@ -134,7 +134,7 @@ async fn simulate_rag_workload() {
 #[tokio::test]
 async fn simulate_streaming_workload() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -236,7 +236,7 @@ async fn simulate_streaming_workload() {
 
     let stats = tenant.stats().await;
     println!("\nWrite buffer size: {}", stats.write_buffer_size);
-    println!("HNSW nodes: {}", stats.hnsw_nodes);
+    println!("HNSW nodes: {}", stats.index_nodes);
 
     println!("\nStreaming workload simulation completed!");
 }
@@ -270,7 +270,7 @@ async fn simulate_multi_tenant_workload() {
         let barrier = barrier.clone();
 
         handles.push(tokio::spawn(async move {
-            let config = HnswConfig::new(TEST_DIMS);
+            let config = test_index_config();
             let tenant = TenantState::open(tenant_id, TEST_DIMS, storage.clone(), config)
                 .await
                 .unwrap();
@@ -380,7 +380,7 @@ async fn simulate_multi_tenant_workload() {
 #[tokio::test]
 async fn simulate_burst_traffic() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -471,7 +471,7 @@ async fn simulate_burst_traffic() {
 #[tokio::test]
 async fn simulate_stability_test() {
     let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-    let config = HnswConfig::new(TEST_DIMS);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, TEST_DIMS, storage.clone(), config)
             .await
@@ -549,7 +549,7 @@ async fn simulate_stability_test() {
         let sample = StabilitySample {
             elapsed_secs: elapsed,
             vector_count: stats.vector_count,
-            hnsw_nodes: stats.hnsw_nodes,
+            index_nodes: stats.index_nodes,
             write_buffer_size: stats.write_buffer_size,
         };
 
@@ -557,7 +557,7 @@ async fn simulate_stability_test() {
             "t={}s: vectors={}, hnsw={}, buffer={}",
             sample.elapsed_secs,
             sample.vector_count,
-            sample.hnsw_nodes,
+            sample.index_nodes,
             sample.write_buffer_size
         );
 
@@ -620,6 +620,6 @@ struct TenantMetrics {
 struct StabilitySample {
     elapsed_secs: u64,
     vector_count: u64,
-    hnsw_nodes: u64,
+    index_nodes: u64,
     write_buffer_size: usize,
 }
