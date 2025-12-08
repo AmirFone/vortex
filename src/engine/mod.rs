@@ -4,7 +4,7 @@
 //! Manages tenants and coordinates background tasks.
 
 use crate::config::EngineConfig;
-use crate::hnsw::HnswConfig;
+use crate::index::{AnnIndexConfig, HnswParams};
 use crate::storage::StorageBackend;
 use crate::tenant::{SearchResult, TenantState, TenantStats, UpsertResult};
 use dashmap::DashMap;
@@ -17,7 +17,7 @@ pub struct VectorEngine {
     config: EngineConfig,
     storage: Arc<StorageBackend>,
     tenants: DashMap<u64, Arc<TenantState>>,
-    hnsw_config: HnswConfig,
+    index_config: AnnIndexConfig,
     /// Shutdown signal
     shutdown: RwLock<bool>,
 }
@@ -25,19 +25,19 @@ pub struct VectorEngine {
 impl VectorEngine {
     /// Create a new engine
     pub async fn new(config: EngineConfig, storage: StorageBackend) -> anyhow::Result<Arc<Self>> {
-        let hnsw_config = HnswConfig {
+        let index_config = AnnIndexConfig::Hnsw(HnswParams {
             m: config.hnsw_m,
             m_max0: config.hnsw_m * 2,
             ef_construction: config.hnsw_ef_construction,
             ef_search: config.hnsw_ef_search,
             ml: 1.0 / (config.hnsw_m as f64).ln(),
-        };
+        });
 
         let engine = Arc::new(Self {
             config: config.clone(),
             storage: Arc::new(storage),
             tenants: DashMap::new(),
-            hnsw_config,
+            index_config,
             shutdown: RwLock::new(false),
         });
 
@@ -63,7 +63,7 @@ impl VectorEngine {
             tenant_id,
             self.config.default_dims,
             Arc::new(BlockStorageWrapper(self.storage.clone())),
-            self.hnsw_config.clone(),
+            self.index_config.clone(),
         )
         .await?;
 
@@ -131,7 +131,7 @@ impl VectorEngine {
                     tracing::error!(
                         tenant_id = tenant.tenant_id,
                         error = %e,
-                        "Failed to flush tenant to HNSW"
+                        "Failed to flush tenant to index"
                     );
                 }
             }
