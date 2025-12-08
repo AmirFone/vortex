@@ -7,7 +7,9 @@ A high-performance, ACID-compliant vector database written in Rust with HNSW ind
 
 ## Features
 
+- **Pluggable Index Backends** - Choose between HNSW (in-memory) or DiskANN (disk-based) for your workload
 - **HNSW Indexing** - Hierarchical Navigable Small World graphs for efficient approximate nearest neighbor search
+- **DiskANN Support** - Optional disk-based Vamana graph for large-scale, memory-efficient deployments
 - **ACID Compliance** - Write-ahead logging with CRC32 checksums ensures durability and crash recovery
 - **Multi-Tenant Architecture** - Isolated storage and indexing per tenant with no cross-tenant data leakage
 - **Memory-Mapped Storage** - Zero-copy vector reads via mmap for optimal memory utilization
@@ -39,6 +41,17 @@ Production-grade benchmarks run on AWS EC2 with EBS storage (c6i.2xlarge: 8 vCPU
 | Upsert P99 Latency | **4.59ms** |
 | Search P50 Latency | **2.25ms** |
 | Search P99 Latency | **2.67ms** |
+
+### AWS S3 Simulation (100k vectors, 384 dimensions)
+
+| Metric | Value |
+|--------|-------|
+| Upsert Throughput | **57,628 vectors/sec** |
+| Upsert Avg Latency | **17.35ms** |
+| Upsert P99 Latency | **48.57ms** |
+| Search Throughput | **380 queries/sec** |
+| Search Avg Latency | **2.63ms** |
+| Search P99 Latency | **9.31ms** |
 
 Run your own cloud benchmark:
 ```bash
@@ -207,6 +220,73 @@ Tuning guidelines:
 - **Higher ef_construction**: Better graph quality, slower builds
 - **Higher ef (search)**: Better recall, higher latency
 
+## Index Backends
+
+Vortex supports multiple ANN index backends via a pluggable architecture. Choose based on your memory vs latency trade-offs:
+
+### Performance Comparison
+
+| Metric | HNSW | DiskANN | Winner |
+|--------|------|---------|--------|
+| Upsert Throughput | **423,476 vec/sec** | ~50,000 vec/sec | HNSW |
+| Search Throughput | **441.5 queries/sec** | ~300 queries/sec | HNSW |
+| Search P50 Latency | **2.25ms** | ~5-10ms | HNSW |
+| Search P99 Latency | **2.67ms** | ~15-25ms | HNSW |
+| Memory per 1M vectors | ~200 MB | **~20 MB** | DiskANN |
+| Max Dataset Size | ~10M vectors (RAM limited) | **Billions** | DiskANN |
+
+### When to Use Each
+
+**Choose HNSW (Default) when:**
+- You need the lowest possible latency (<3ms p99)
+- Dataset fits in RAM (< 10M vectors on typical servers)
+- Throughput is critical (400+ queries/sec)
+
+**Choose DiskANN when:**
+- Memory is constrained or expensive
+- Dataset is very large (100M+ vectors)
+- Multi-tenant with many isolated indexes
+- You can tolerate slightly higher latency (10-25ms)
+
+### HNSW (Default)
+
+In-memory Hierarchical Navigable Small World graph.
+
+- **Performance**: 423,476 vectors/sec insert, 441.5 queries/sec search
+- **Memory**: ~200 bytes per vector + graph overhead
+- **Pros**: Sub-millisecond search, no disk I/O during queries
+- **Cons**: Higher memory usage, full index must fit in RAM
+
+### DiskANN (Optional)
+
+Disk-based Vamana graph using the `diskann-rs` crate.
+
+- **Performance**: ~50,000 vectors/sec insert, ~300 queries/sec search
+- **Memory**: ~20 bytes per vector (10x lower than HNSW)
+- **Pros**: 10x lower memory, scales to billions of vectors
+- **Cons**: Higher query latency due to disk I/O
+
+> **Note**: DiskANN trades raw performance for memory efficiency. If your workload is memory-bound or requires massive scale, DiskANN is the right choice despite lower throughput.
+
+Enable DiskANN:
+```bash
+# Build with DiskANN support
+cargo build --release --features diskann-index
+
+# Run with DiskANN backend
+INDEX_TYPE=diskann cargo run --release --features diskann-index
+```
+
+### DiskANN Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INDEX_TYPE` | `hnsw` | Index backend (`hnsw` or `diskann`) |
+| `DISKANN_MAX_DEGREE` | `64` | Maximum graph connections per node |
+| `DISKANN_ALPHA` | `1.2` | Pruning parameter (higher = denser graph) |
+| `DISKANN_BUILD_BEAM` | `128` | Beam width during index construction |
+| `DISKANN_SEARCH_BEAM` | `64` | Beam width during search |
+
 ## Testing
 
 The test suite includes 112 tests covering:
@@ -260,13 +340,19 @@ Benchmark groups:
 src/
 ├── api/          # HTTP endpoints (Axum handlers)
 ├── engine/       # Top-level orchestration
+├── index/        # Pluggable ANN index backends
+│   ├── mod.rs    # Index factory and exports
+│   ├── trait.rs  # AnnIndex trait definition
+│   ├── config.rs # Index configuration types
+│   ├── hnsw_adapter.rs  # HNSW backend
+│   └── diskann.rs       # DiskANN backend (optional)
 ├── hnsw/         # HNSW index implementation
 │   ├── insert.rs # Insert algorithm
 │   ├── search.rs # Search algorithm
 │   └── persistence.rs # Index serialization
 ├── storage/      # Storage backends
 │   ├── mock/     # In-memory/temp file storage
-│   └── s3/       # AWS S3 backend (optional)
+│   └── aws/      # AWS S3/EBS backend (optional)
 ├── tenant/       # Per-tenant state management
 ├── vectors/      # Vector storage (mmap)
 ├── wal/          # Write-ahead log
