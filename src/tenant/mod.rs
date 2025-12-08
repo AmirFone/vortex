@@ -3,10 +3,10 @@
 //! Each tenant has isolated:
 //! - WAL (Write-Ahead Log)
 //! - VectorStore
-//! - HNSW Index
-//! - Write Buffer (for recently written vectors not yet in HNSW)
+//! - ANN Index (HNSW, DiskANN, etc.)
+//! - Write Buffer (for recently written vectors not yet in index)
 
-use crate::hnsw::{HnswConfig, HnswIndex};
+use crate::index::{AnnIndex, AnnIndexConfig, HnswParams};
 use crate::storage::{BlockStorage, StorageError, StorageResult};
 use crate::vectors::VectorStore;
 use crate::wal::Wal;
@@ -20,14 +20,17 @@ pub struct TenantState {
     pub dims: usize,
     pub wal: Wal,
     pub vectors: VectorStore,
-    pub hnsw: HnswIndex,
+    /// ANN index (HNSW, DiskANN, etc.)
+    pub index: Arc<dyn AnnIndex>,
+    /// Index configuration for persistence/reload
+    index_config: AnnIndexConfig,
     /// ID mapping: vector_id -> array_index in VectorStore
     pub id_map: RwLock<HashMap<u64, u32>>,
     /// Reverse ID mapping: array_index -> vector_id (for O(1) lookups in search)
     pub reverse_id_map: RwLock<HashMap<u32, u64>>,
-    /// Write buffer: vectors written since last HNSW flush
+    /// Write buffer: vectors written since last index flush
     pub write_buffer: RwLock<Vec<u32>>,
-    /// Last sequence flushed to HNSW
+    /// Last sequence flushed to index
     pub last_flushed_seq: RwLock<u64>,
 }
 
@@ -37,7 +40,7 @@ impl TenantState {
         tenant_id: u64,
         dims: usize,
         storage: Arc<dyn BlockStorage>,
-        hnsw_config: HnswConfig,
+        index_config: AnnIndexConfig,
     ) -> StorageResult<Self> {
         let base_path = format!("tenant_{}", tenant_id);
 
@@ -46,7 +49,7 @@ impl TenantState {
 
         let wal_path = format!("{}/wal.log", base_path);
         let vectors_path = format!("{}/vectors.bin", base_path);
-        let hnsw_path = format!("{}/index.hnsw", base_path);
+        let index_path = format!("{}/index.hnsw", base_path);
         let id_map_path = format!("{}/id_map.bin", base_path);
         let meta_path = format!("{}/meta.json", base_path);
 
@@ -58,11 +61,11 @@ impl TenantState {
         // Open VectorStore
         let vectors = VectorStore::open(storage.clone(), &vectors_path, dims).await?;
 
-        // Try to load HNSW index
-        let hnsw = if storage.exists(&hnsw_path).await? {
-            HnswIndex::load(&*storage, &hnsw_path, hnsw_config.clone()).await?
+        // Try to load index
+        let index: Arc<dyn AnnIndex> = if storage.exists(&index_path).await? {
+            crate::index::load_index(index_config.clone(), &*storage, &index_path).await?
         } else {
-            HnswIndex::new(hnsw_config)
+            crate::index::create_index(index_config.clone())
         };
 
         // Try to load id_map and build reverse map
@@ -93,7 +96,8 @@ impl TenantState {
             dims,
             wal,
             vectors,
-            hnsw,
+            index,
+            index_config,
             id_map: RwLock::new(id_map),
             reverse_id_map: RwLock::new(reverse_id_map),
             write_buffer: RwLock::new(Vec::new()),
@@ -154,10 +158,10 @@ impl TenantState {
             self.id_map.write().insert(entry.vector_id, idx);
             self.reverse_id_map.write().insert(idx, entry.vector_id);
 
-            // Add to write buffer only if this vector wasn't flushed to HNSW
-            // (i.e., if idx >= HNSW node count, it's still pending)
-            let hnsw_len = self.hnsw.len() as u32;
-            if idx >= hnsw_len {
+            // Add to write buffer only if this vector wasn't flushed to index
+            // (i.e., if idx >= index node count, it's still pending)
+            let index_len = self.index.len() as u32;
+            if idx >= index_len {
                 self.write_buffer.write().push(idx);
             }
 
@@ -246,12 +250,12 @@ impl TenantState {
         // Yield to allow other tasks to run (cooperative multitasking)
         tokio::task::yield_now().await;
 
-        // Phase 1: HNSW search (doesn't need reverse_id_map lock)
+        // Phase 1: Index search (doesn't need reverse_id_map lock)
         // Use k * 4 instead of k * 2 to ensure enough candidates after deduplication
         // with write_buffer results (which may contain duplicates)
-        let hnsw_results = self.hnsw.search(query, k * 4, ef, &self.vectors);
+        let index_results = self.index.search(query, k * 4, ef, &self.vectors);
 
-        // Yield after potentially expensive HNSW search
+        // Yield after potentially expensive index search
         tokio::task::yield_now().await;
 
         // Phase 2: Get write buffer indices (short lock)
@@ -280,8 +284,8 @@ impl TenantState {
         {
             let reverse_id_map = self.reverse_id_map.read();
 
-            // Map HNSW results
-            for (vector_index, similarity) in hnsw_results {
+            // Map index results
+            for (vector_index, similarity) in index_results {
                 if let Some(&vector_id) = reverse_id_map.get(&vector_index) {
                     results.push(SearchResult {
                         id: vector_id,
@@ -314,12 +318,12 @@ impl TenantState {
         results
     }
 
-    /// Flush write buffer to HNSW index
+    /// Flush write buffer to index
     ///
     /// IMPORTANT: Write order is critical for crash safety:
     /// 1. id_map FIRST (source of truth for vector ID mappings)
     /// 2. meta.json SECOND (commits the id_map as valid, updates last_flushed_seq)
-    /// 3. HNSW index LAST (optimization only - can be rebuilt from id_map)
+    /// 3. Index LAST (optimization only - can be rebuilt from id_map)
     pub async fn flush_to_hnsw(&self, storage: &dyn BlockStorage) -> StorageResult<usize> {
         // Extract indices in a separate scope to ensure guard is dropped before await
         let indices: Vec<u32> = {
@@ -333,9 +337,9 @@ impl TenantState {
 
         let count = indices.len();
 
-        // Insert each vector into HNSW (in-memory only, not persisted yet)
+        // Insert each vector into index (in-memory only, not persisted yet)
         for idx in &indices {
-            self.hnsw.insert(*idx, &self.vectors);
+            self.index.insert(*idx, &self.vectors);
         }
 
         // Capture sequence BEFORE any persistence
@@ -366,9 +370,9 @@ impl TenantState {
         // STEP 3: Update in-memory sequence AFTER metadata is persisted
         *self.last_flushed_seq.write() = new_seq;
 
-        // STEP 4: Save HNSW index LAST (optimization - recovery works without it)
-        let hnsw_path = format!("tenant_{}/index.hnsw", self.tenant_id);
-        self.hnsw.save(storage, &hnsw_path).await?;
+        // STEP 4: Save index LAST (optimization - recovery works without it)
+        let index_path = format!("tenant_{}/index.hnsw", self.tenant_id);
+        self.index.save(storage, &index_path).await?;
 
         Ok(count)
     }
@@ -382,7 +386,7 @@ impl TenantState {
         TenantStats {
             tenant_id: self.tenant_id,
             vector_count: self.vectors.count(),
-            hnsw_nodes: self.hnsw.len() as u64,
+            index_nodes: self.index.len() as u64,
             write_buffer_size: self.write_buffer.read().len(),
             wal_sequence: self.wal.current_sequence(),
             last_flushed_seq: *self.last_flushed_seq.read(),
@@ -422,7 +426,7 @@ struct TenantMeta {
 pub struct TenantStats {
     pub tenant_id: u64,
     pub vector_count: u64,
-    pub hnsw_nodes: u64,
+    pub index_nodes: u64,
     pub write_buffer_size: usize,
     pub wal_sequence: u64,
     pub last_flushed_seq: u64,
@@ -445,7 +449,7 @@ mod tests {
     #[tokio::test]
     async fn test_tenant_upsert_and_search() {
         let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-        let config = HnswConfig::new(4);
+        let config = AnnIndexConfig::hnsw_with_m(4);
 
         let tenant = TenantState::open(1, 4, storage.clone(), config)
             .await
@@ -471,7 +475,7 @@ mod tests {
     #[tokio::test]
     async fn test_tenant_flush_and_search() {
         let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
-        let config = HnswConfig::new(4);
+        let config = AnnIndexConfig::hnsw_with_m(4);
 
         let tenant = TenantState::open(1, 4, storage.clone(), config)
             .await
@@ -501,7 +505,7 @@ mod tests {
     async fn test_tenant_recovery() {
         let temp_dir = tempfile::tempdir().unwrap();
         let storage_path = temp_dir.path().to_path_buf();
-        let config = HnswConfig::new(4);
+        let config = AnnIndexConfig::hnsw_with_m(4);
 
         // Create and populate tenant
         {
