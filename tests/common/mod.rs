@@ -16,6 +16,12 @@ use tempfile::TempDir;
 
 use vortex::storage::mock::{MockBlockStorage, MockStorageConfig};
 use vortex::storage::{BlockStorage, StorageError, StorageResult};
+use vortex::index::AnnIndexConfig;
+
+/// Create a default HNSW index config for testing
+pub fn test_index_config() -> AnnIndexConfig {
+    AnnIndexConfig::default()
+}
 
 /// Helper to create io::Error for injection
 fn io_error(msg: &str) -> std::io::Error {

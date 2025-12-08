@@ -10,7 +10,7 @@ mod common;
 
 use std::sync::Arc;
 
-use vortex::hnsw::HnswConfig;
+use crate::common::test_index_config;
 use vortex::storage::BlockStorage;
 use vortex::tenant::TenantState;
 use vortex::wal::Wal;
@@ -92,7 +92,7 @@ async fn test_wal_crc_corruption_detection() {
 async fn test_batch_atomicity_with_failure() {
     let (temp_dir, path, storage) = temp_storage_with_path();
     let failing_storage = Arc::new(FailingStorage::new(storage.clone()));
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Create tenant and insert some vectors
     let tenant = TenantState::open(1, 4, failing_storage.clone(), config.clone())
@@ -233,7 +233,7 @@ async fn test_concurrent_reads_during_writes() {
     use tokio::time::{timeout, Duration};
 
     let (_temp_dir, storage) = common::temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let tenant = Arc::new(
         TenantState::open(1, 4, storage.clone(), config)
             .await
@@ -305,7 +305,7 @@ async fn test_concurrent_reads_during_writes() {
 #[tokio::test]
 async fn test_multi_tenant_isolation() {
     let (_temp_dir, storage) = common::temp_storage();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Create two tenants
     let tenant1 = TenantState::open(1, 4, storage.clone(), config.clone())
@@ -356,7 +356,7 @@ async fn test_multi_tenant_isolation() {
 #[tokio::test]
 async fn test_durability_write_crash_recover() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // Write vectors and simulate crash (just close without graceful shutdown)
     let unique_vector = seeded_vector(4, 12345);
@@ -398,7 +398,7 @@ async fn test_durability_write_crash_recover() {
 #[tokio::test]
 async fn test_durability_multiple_vectors() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
     let num_vectors = 50;
 
     // Write many vectors without flushing
@@ -435,7 +435,7 @@ async fn test_durability_multiple_vectors() {
 #[tokio::test]
 async fn test_recovery_after_multiple_crashes() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     // First session: write 10 vectors, crash
     {
@@ -531,7 +531,7 @@ async fn test_wal_replay_completeness() {
 #[tokio::test]
 async fn test_flush_then_crash_recovery() {
     let (temp_dir, path, storage) = temp_storage_with_path();
-    let config = HnswConfig::new(4);
+    let config = test_index_config();
 
     let vectors1: Vec<(u64, Vec<f32>)> = (0..20)
         .map(|i| (100 + i as u64, seeded_vector(4, i)))
