@@ -224,14 +224,14 @@ Tuning guidelines:
 
 Vortex supports multiple ANN index backends via a pluggable architecture. Choose based on your memory vs latency trade-offs:
 
-### Performance Comparison
+### Performance Comparison (EC2 c6i.2xlarge, 100k vectors)
 
 | Metric | HNSW | DiskANN | Winner |
 |--------|------|---------|--------|
-| Upsert Throughput | **423,476 vec/sec** | 67,109 vec/sec | HNSW |
-| Search Throughput | **441.5 queries/sec** | 363.6 queries/sec | HNSW |
-| Search P50 Latency | 2.25ms | **1.80ms** | DiskANN |
-| Search P99 Latency | **2.67ms** | 13.82ms | HNSW |
+| Upsert Throughput | **423,476 vec/sec** | 416,607 vec/sec | HNSW |
+| Search Throughput | **441.5 queries/sec** | 421.9 queries/sec | HNSW |
+| Search P50 Latency | **2.25ms** | 2.32ms | HNSW |
+| Search P99 Latency | **2.67ms** | 3.90ms | HNSW |
 | Memory per 1M vectors | ~200 MB | **~20 MB** | DiskANN |
 | Max Dataset Size | ~10M vectors (RAM limited) | **Billions** | DiskANN |
 
@@ -246,7 +246,7 @@ Vortex supports multiple ANN index backends via a pluggable architecture. Choose
 - Memory is constrained or expensive
 - Dataset is very large (100M+ vectors)
 - Multi-tenant with many isolated indexes
-- You can tolerate slightly higher latency (10-25ms)
+- You need near-HNSW performance with 10x less memory
 
 ### HNSW (Default)
 
@@ -261,12 +261,12 @@ In-memory Hierarchical Navigable Small World graph.
 
 Disk-based Vamana graph using the `diskann-rs` crate.
 
-- **Performance**: 67,109 vectors/sec insert, 363.6 queries/sec search
+- **Performance**: 416,607 vectors/sec insert, 421.9 queries/sec search (EC2)
 - **Memory**: ~20 bytes per vector (10x lower than HNSW)
-- **Pros**: 10x lower memory, scales to billions of vectors, excellent P50 latency (1.80ms)
-- **Cons**: Higher P99 latency (13.82ms) due to graph build overhead
+- **Pros**: 10x lower memory, scales to billions of vectors, near-HNSW latency (2.32ms P50, 3.90ms P99)
+- **Cons**: Slightly higher latency than HNSW
 
-> **Note**: DiskANN trades raw throughput for memory efficiency. If your workload is memory-bound or requires massive scale, DiskANN is the right choice despite lower throughput.
+> **Note**: On real EC2 hardware with EBS storage, DiskANN achieves near-identical throughput to HNSW while using 10x less memory. This makes DiskANN an excellent choice for memory-constrained environments.
 
 Enable DiskANN:
 ```bash

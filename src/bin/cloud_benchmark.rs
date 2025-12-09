@@ -52,6 +52,10 @@ struct Args {
     /// Dry run - don't actually create AWS resources
     #[arg(long)]
     dry_run: bool,
+
+    /// Index type (hnsw or diskann)
+    #[arg(long, default_value = "hnsw")]
+    index_type: String,
 }
 
 #[tokio::main]
@@ -90,6 +94,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("║ EBS Volume:           {:>32} GB ║", args.ebs_size_gb);
     println!("║ Region:               {:>38} ║", args.region);
     println!("║ Vectors:              {:>38} ║", args.vectors);
+    println!(
+        "║ Index Type:           {:>38} ║",
+        args.index_type.to_uppercase()
+    );
     println!(
         "║ Estimated Cost:       {:>37} ║",
         format!("${:.2}", estimated_cost)
@@ -196,6 +204,7 @@ async fn run_benchmark(
         aws_access_key,
         aws_secret_key,
         &args.region,
+        &args.index_type,
     );
 
     let config = InstanceConfig {
@@ -363,6 +372,7 @@ fn print_user_data_preview(args: &Args, access_key: &str, _secret_key: &str) {
         &access_key[..8], // Only show prefix
         "***REDACTED***",
         &args.region,
+        &args.index_type,
     );
 
     println!("User Data Script Preview:");

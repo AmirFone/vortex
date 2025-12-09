@@ -591,7 +591,15 @@ pub fn generate_benchmark_user_data(
     aws_access_key: &str,
     aws_secret_key: &str,
     region: &str,
+    index_type: &str,
 ) -> String {
+    // Determine cargo features based on index type
+    let features = if index_type == "diskann" {
+        "aws-storage,diskann-index"
+    } else {
+        "aws-storage"
+    };
+
     format!(
         r#"#!/bin/bash
 set -e
@@ -599,6 +607,7 @@ exec > >(tee /var/log/vortex-benchmark.log) 2>&1
 
 echo "=========================================="
 echo "Vortex Cloud Benchmark - Starting"
+echo "Index Type: {index_type}"
 echo "=========================================="
 
 # Set HOME explicitly (cloud-init doesn't always set it)
@@ -608,6 +617,9 @@ export HOME=/root
 export AWS_ACCESS_KEY_ID="{aws_access_key}"
 export AWS_SECRET_ACCESS_KEY="{aws_secret_key}"
 export AWS_DEFAULT_REGION="{region}"
+
+# Set index type
+export INDEX_TYPE="{index_type}"
 
 # Install dependencies
 echo "Installing dependencies..."
@@ -625,12 +637,12 @@ cd /opt
 git clone https://github.com/AmirFone/vortex.git
 cd vortex
 
-# Build with AWS storage feature
-echo "Building Vortex (this may take a few minutes)..."
-cargo build --release --features aws-storage
+# Build with appropriate features
+echo "Building Vortex with features: {features}..."
+cargo build --release --features {features}
 
 # Run benchmark
-echo "Running benchmark with {vectors} vectors..."
+echo "Running benchmark with {vectors} vectors using $INDEX_TYPE index..."
 ./target/release/simulate \
     --vectors {vectors} \
     --storage mock \
@@ -662,5 +674,7 @@ echo "=========================================="
         region = region,
         s3_bucket = s3_bucket,
         vectors = vectors,
+        index_type = index_type,
+        features = features,
     )
 }
