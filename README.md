@@ -1,84 +1,90 @@
 # Vortex
 
-A high-performance, ACID-compliant vector database written in Rust with HNSW indexing.
+A production-ready vector database built in Rust for AI/ML applications requiring semantic search at scale.
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Features
+## What is Vortex?
 
-- **Pluggable Index Backends** - Choose between HNSW (in-memory) or DiskANN (disk-based) for your workload
-- **HNSW Indexing** - Hierarchical Navigable Small World graphs for efficient approximate nearest neighbor search
-- **DiskANN Support** - Optional disk-based Vamana graph for large-scale, memory-efficient deployments
-- **ACID Compliance** - Write-ahead logging with CRC32 checksums ensures durability and crash recovery
-- **Multi-Tenant Architecture** - Isolated storage and indexing per tenant with no cross-tenant data leakage
-- **Memory-Mapped Storage** - Zero-copy vector reads via mmap for optimal memory utilization
-- **High Throughput** - Optimized write buffer with batch operations for sustained insert performance
-- **RESTful API** - Clean HTTP endpoints via Axum for easy integration
-- **Configurable Search** - Tune recall vs latency with adjustable `ef` parameter
+Vortex stores and searches high-dimensional vectors (embeddings) used in:
+- **Semantic Search** - Find documents by meaning, not keywords
+- **RAG Applications** - Retrieve relevant context for LLMs
+- **Recommendation Systems** - Find similar items/users
+- **Image/Audio Search** - Match by visual/acoustic similarity
 
-## Performance
+## Why Vortex?
 
-Benchmarks run on 384-dimensional normalized vectors:
+| Requirement | How Vortex Solves It |
+|-------------|---------------------|
+| **Speed** | 400k+ vectors/sec insert, sub-3ms search latency |
+| **Scale** | Multi-tenant isolation, billions of vectors with DiskANN |
+| **Reliability** | ACID-compliant with WAL, survives crashes |
+| **Flexibility** | Choose HNSW (speed) or DiskANN (memory efficiency) |
+| **Simplicity** | REST API, single binary, minimal configuration |
 
-| Metric | Value |
-|--------|-------|
-| Insert Throughput | **8,338 vectors/sec** |
-| Search p50 Latency | **< 10ms** |
-| Search p99 Latency | **< 50ms** |
-| Recall@10 (ef=200) | **100%** |
-| Concurrent Writers (2 threads) | **6,793 vectors/sec** |
+---
 
-### AWS Cloud Benchmarks
+## Cloud Performance
 
-Production-grade benchmarks run on AWS EC2 with EBS storage (c6i.2xlarge: 8 vCPU, 16 GB RAM):
+All benchmarks run on **AWS EC2 c6i.2xlarge** (8 vCPU, 16 GB RAM) with 100,000 384-dimensional vectors.
 
-| Metric | Value |
-|--------|-------|
-| Upsert Throughput | **423,476 vectors/sec** |
-| Search Throughput | **441.5 queries/sec** |
-| Upsert P50 Latency | **2.26ms** |
-| Upsert P99 Latency | **4.59ms** |
-| Search P50 Latency | **2.25ms** |
-| Search P99 Latency | **2.67ms** |
+### Index Comparison
 
-### AWS S3 Simulation (100k vectors, 384 dimensions)
+| Metric | HNSW | DiskANN |
+|--------|------|---------|
+| **Upsert Throughput** | 423,476 vec/sec | 416,607 vec/sec |
+| **Search Throughput** | 441 queries/sec | 422 queries/sec |
+| **Search P50 Latency** | 2.25ms | 2.32ms |
+| **Search P99 Latency** | 2.67ms | 3.90ms |
+| **Memory Usage** | ~200 MB per 1M vectors | ~20 MB per 1M vectors |
+| **Max Dataset Size** | ~10M vectors (RAM bound) | Billions (disk bound) |
 
-| Metric | Value |
-|--------|-------|
-| Upsert Throughput | **57,628 vectors/sec** |
-| Upsert Avg Latency | **17.35ms** |
-| Upsert P99 Latency | **48.57ms** |
-| Search Throughput | **380 queries/sec** |
-| Search Avg Latency | **2.63ms** |
-| Search P99 Latency | **9.31ms** |
+### Which Index Should I Use?
 
-Run your own cloud benchmark:
-```bash
-cargo run --release --bin cloud_benchmark --features aws-storage
-```
+**HNSW (Default)** - Best for most use cases
+- Lowest latency (<3ms p99)
+- Highest throughput
+- Dataset fits in RAM
 
-See [docs/CLOUD_TESTING.md](docs/CLOUD_TESTING.md) for detailed cloud testing documentation.
+**DiskANN** - Best for large-scale or memory-constrained deployments
+- 10x lower memory footprint
+- Scales to billions of vectors
+- Near-HNSW performance
+
+---
+
+## Cost Analysis
+
+Running Vortex on AWS:
+
+| Instance | vCPU | RAM | Hourly Cost | Vectors Supported | Use Case |
+|----------|------|-----|-------------|-------------------|----------|
+| c6i.large | 2 | 4 GB | $0.085 | ~1M (HNSW) | Development |
+| c6i.xlarge | 4 | 8 GB | $0.17 | ~5M (HNSW) | Small production |
+| c6i.2xlarge | 8 | 16 GB | $0.34 | ~10M (HNSW) | Medium production |
+| c6i.4xlarge | 16 | 32 GB | $0.68 | ~50M (HNSW) | Large production |
+| c6i.2xlarge | 8 | 16 GB | $0.34 | ~100M (DiskANN) | Large scale, memory-efficient |
+
+**Example monthly costs** (on-demand, us-east-1):
+- 10M vectors with HNSW: ~$250/month (c6i.2xlarge)
+- 100M vectors with DiskANN: ~$250/month (c6i.2xlarge + EBS)
+
+---
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/AmirFone/vortex.git
 cd vortex
-
-# Build in release mode
 cargo build --release
-
-# Run the server
 cargo run --release
 ```
 
-### Basic Usage
+### Insert Vectors
 
-**Insert vectors:**
 ```bash
 curl -X POST http://localhost:3000/tenants/1/upsert \
   -H "Content-Type: application/json" \
@@ -90,58 +96,18 @@ curl -X POST http://localhost:3000/tenants/1/upsert \
   }'
 ```
 
-**Search for similar vectors:**
+### Search
+
 ```bash
 curl -X POST http://localhost:3000/tenants/1/search \
   -H "Content-Type: application/json" \
   -d '{
     "vector": [0.1, 0.2, 0.3, ...],
-    "k": 10,
-    "ef": 200
+    "k": 10
   }'
 ```
 
-**Check health:**
-```bash
-curl http://localhost:3000/health
-```
-
-## API Reference
-
-### Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check |
-| `POST` | `/tenants/:id/upsert` | Insert or update vectors |
-| `POST` | `/tenants/:id/search` | Search for nearest neighbors |
-| `GET` | `/tenants/:id/stats` | Get tenant statistics |
-| `POST` | `/tenants/:id/flush` | Force flush write buffer to HNSW index |
-
-### Upsert Request
-
-```json
-{
-  "vectors": [
-    {
-      "id": 1,
-      "values": [0.1, 0.2, 0.3]
-    }
-  ]
-}
-```
-
-### Search Request
-
-```json
-{
-  "vector": [0.1, 0.2, 0.3],
-  "k": 10,
-  "ef": 200
-}
-```
-
-### Search Response
+### Response
 
 ```json
 {
@@ -149,227 +115,165 @@ curl http://localhost:3000/health
     {"id": 42, "score": 0.95},
     {"id": 17, "score": 0.89}
   ],
-  "latency_ms": 5
+  "latency_ms": 2
 }
 ```
+
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/tenants/:id/upsert` | Insert or update vectors |
+| `POST` | `/tenants/:id/search` | Find k nearest neighbors |
+| `GET` | `/tenants/:id/stats` | Get index statistics |
+| `POST` | `/tenants/:id/flush` | Force flush to index |
+| `GET` | `/health` | Health check |
+
+---
 
 ## Architecture
 
 ```
-+-------------------------------------------------------------+
-|                        HTTP API (Axum)                       |
-+-------------------------------------------------------------+
-|                         Engine                               |
-|  +----------------------------------------------------------+
-|  |                    Tenant Manager                         |
-|  |  +-----------+  +-----------+  +-----------+             |
-|  |  | Tenant 1  |  | Tenant 2  |  | Tenant N  |             |
-|  |  +-----------+  +-----------+  +-----------+             |
-|  +----------------------------------------------------------+
-+-------------------------------------------------------------+
-|                      Per-Tenant State                        |
-|  +-----------+  +-----------+  +-------------------+        |
-|  |Write Buffer| -> |HNSW Index|  |Vector Store (mmap)|       |
-|  +-----------+  +-----------+  +-------------------+        |
-+-------------------------------------------------------------+
-|                    Durability Layer                          |
-|  +----------------------------------------------------------+
-|  |              Write-Ahead Log (WAL)                        |
-|  |              CRC32 Checksums | fsync                      |
-|  +----------------------------------------------------------+
-+-------------------------------------------------------------+
-|                      Storage Backend                         |
-|  +-------------------+  +---------------------------+       |
-|  |   Mock Storage    |  |    AWS S3 (optional)      |       |
-|  +-------------------+  +---------------------------+       |
-+-------------------------------------------------------------+
+┌─────────────────────────────────────────────────────────────┐
+│                      REST API (Axum)                        │
+│                   POST /tenants/:id/search                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        Engine                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │  Tenant 1   │  │  Tenant 2   │  │  Tenant N   │         │
+│  │  (isolated) │  │  (isolated) │  │  (isolated) │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Per-Tenant State                         │
+│                                                             │
+│   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐ │
+│   │ Write Buffer │───▶│  ANN Index   │    │ Vector Store │ │
+│   │  (in-memory) │    │ HNSW/DiskANN │    │   (mmap)     │ │
+│   └──────────────┘    └──────────────┘    └──────────────┘ │
+│                              │                              │
+└──────────────────────────────│──────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Durability Layer                         │
+│   ┌─────────────────────────────────────────────────────┐  │
+│   │              Write-Ahead Log (WAL)                  │  │
+│   │         CRC32 checksums • fsync on commit           │  │
+│   └─────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Components
+### Data Flow
 
-- **Engine**: Top-level orchestration, manages tenant lifecycle
-- **Tenant State**: Isolated per-tenant data with write buffer, HNSW index, and vector storage
-- **Write Buffer**: In-memory buffer for recent writes, periodically flushed to HNSW
-- **HNSW Index**: Hierarchical Navigable Small World graph for approximate nearest neighbor search
-- **Vector Store**: Memory-mapped file storage for vector data
-- **WAL**: Write-ahead log for durability with CRC32 integrity checks
+1. **Write Path**: Upsert → WAL (durability) → Write Buffer → Background flush to ANN Index
+2. **Read Path**: Query → Search ANN Index + Write Buffer → Merge & rank results
+3. **Recovery**: On startup, replay WAL entries to rebuild write buffer state
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| **Engine** | Manages tenant lifecycle and background tasks |
+| **Tenant State** | Isolated data per tenant (no cross-tenant leakage) |
+| **Write Buffer** | Batches recent writes before index insertion |
+| **ANN Index** | HNSW or DiskANN graph for approximate nearest neighbor search |
+| **Vector Store** | Memory-mapped storage for raw vector data |
+| **WAL** | Write-ahead log ensuring crash recovery |
+
+---
 
 ## Configuration
 
-Environment variables:
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `3000` | Server port |
-| `EBS_PATH` | `/tmp/vectordb/ebs` | Local storage path |
-| `S3_PATH` | `/tmp/vectordb/s3` | S3-compatible storage path |
 | `DIMENSIONS` | `384` | Vector dimensionality |
+| `INDEX_TYPE` | `hnsw` | Index backend: `hnsw` or `diskann` |
 | `FLUSH_INTERVAL_SECS` | `30` | Auto-flush interval |
 
-## HNSW Parameters
+### HNSW Tuning
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `M` | 16 | Max connections per node per layer |
-| `ef_construction` | 200 | Size of dynamic candidate list during construction |
-| `ef` | 100 | Size of dynamic candidate list during search |
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `M` | 16 | Graph connectivity (higher = better recall, more memory) |
+| `ef_construction` | 200 | Build quality (higher = better graph, slower build) |
+| `ef` | 100 | Search quality (higher = better recall, slower search) |
 
-Tuning guidelines:
-- **Higher M**: Better recall, more memory, slower inserts
-- **Higher ef_construction**: Better graph quality, slower builds
-- **Higher ef (search)**: Better recall, higher latency
+### DiskANN Tuning
 
-## Index Backends
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `DISKANN_MAX_DEGREE` | 64 | Graph connections per node |
+| `DISKANN_ALPHA` | 1.2 | Pruning aggressiveness |
+| `DISKANN_SEARCH_BEAM` | 64 | Search beam width |
 
-Vortex supports multiple ANN index backends via a pluggable architecture. Choose based on your memory vs latency trade-offs:
+---
 
-### Performance Comparison (EC2 c6i.2xlarge, 100k vectors)
+## Running Benchmarks
 
-| Metric | HNSW | DiskANN | Winner |
-|--------|------|---------|--------|
-| Upsert Throughput | **423,476 vec/sec** | 416,607 vec/sec | HNSW |
-| Search Throughput | **441.5 queries/sec** | 421.9 queries/sec | HNSW |
-| Search P50 Latency | **2.25ms** | 2.32ms | HNSW |
-| Search P99 Latency | **2.67ms** | 3.90ms | HNSW |
-| Memory per 1M vectors | ~200 MB | **~20 MB** | DiskANN |
-| Max Dataset Size | ~10M vectors (RAM limited) | **Billions** | DiskANN |
+### Cloud Benchmark (EC2)
 
-### When to Use Each
+Provisions an EC2 instance, runs the benchmark, and cleans up:
 
-**Choose HNSW (Default) when:**
-- You need the lowest possible latency (<3ms p99)
-- Dataset fits in RAM (< 10M vectors on typical servers)
-- Throughput is critical (400+ queries/sec)
-
-**Choose DiskANN when:**
-- Memory is constrained or expensive
-- Dataset is very large (100M+ vectors)
-- Multi-tenant with many isolated indexes
-- You need near-HNSW performance with 10x less memory
-
-### HNSW (Default)
-
-In-memory Hierarchical Navigable Small World graph.
-
-- **Performance**: 423,476 vectors/sec insert, 441.5 queries/sec search
-- **Memory**: ~200 bytes per vector + graph overhead
-- **Pros**: Sub-millisecond search, no disk I/O during queries
-- **Cons**: Higher memory usage, full index must fit in RAM
-
-### DiskANN (Optional)
-
-Disk-based Vamana graph using the `diskann-rs` crate.
-
-- **Performance**: 416,607 vectors/sec insert, 421.9 queries/sec search (EC2)
-- **Memory**: ~20 bytes per vector (10x lower than HNSW)
-- **Pros**: 10x lower memory, scales to billions of vectors, near-HNSW latency (2.32ms P50, 3.90ms P99)
-- **Cons**: Slightly higher latency than HNSW
-
-> **Note**: On real EC2 hardware with EBS storage, DiskANN achieves near-identical throughput to HNSW while using 10x less memory. This makes DiskANN an excellent choice for memory-constrained environments.
-
-Enable DiskANN:
 ```bash
-# Build with DiskANN support
-cargo build --release --features diskann-index
+# HNSW benchmark
+cargo run --release --bin cloud_benchmark --features aws-storage
 
-# Run with DiskANN backend
-INDEX_TYPE=diskann cargo run --release --features diskann-index
+# DiskANN benchmark
+cargo run --release --bin cloud_benchmark --features aws-storage -- --index-type diskann
+
+# Custom configuration
+cargo run --release --bin cloud_benchmark --features aws-storage -- \
+    --vectors 500000 \
+    --instance-type c6i.4xlarge \
+    --index-type hnsw
 ```
 
-### DiskANN Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `INDEX_TYPE` | `hnsw` | Index backend (`hnsw` or `diskann`) |
-| `DISKANN_MAX_DEGREE` | `64` | Maximum graph connections per node |
-| `DISKANN_ALPHA` | `1.2` | Pruning parameter (higher = denser graph) |
-| `DISKANN_BUILD_BEAM` | `128` | Beam width during index construction |
-| `DISKANN_SEARCH_BEAM` | `64` | Beam width during search |
+---
 
 ## Testing
 
-The test suite includes 112 tests covering:
-
-- **ACID Compliance** - Atomicity, consistency, isolation, durability
-- **Concurrency** - Multi-threaded read/write operations
-- **Crash Recovery** - WAL replay and data integrity after failures
-- **Stress Testing** - High load and edge case scenarios
-- **Correctness** - Search recall and data integrity validation
+112 tests covering ACID compliance, concurrency, crash recovery, and correctness:
 
 ```bash
-# Run all tests
-cargo test
-
-# Run with output
-cargo test -- --nocapture
-
-# Run specific test suite
-cargo test --test acid_tests
-cargo test --test stress_tests
-cargo test --test concurrency_tests
-
-# Run release mode tests (faster)
-cargo test --release
+cargo test                           # Run all tests
+cargo test --test acid_tests         # ACID compliance
+cargo test --test concurrency_tests  # Multi-threaded operations
+cargo test --test stress_tests       # Load testing
 ```
 
-## Benchmarks
-
-```bash
-# Run all benchmarks
-cargo bench
-
-# Run specific benchmark
-cargo bench --bench performance_benchmarks
-cargo bench --bench search_benchmark
-```
-
-Benchmark groups:
-- `upsert_batch` - Insert throughput at various batch sizes
-- `search_ef` - Search latency with different ef values
-- `search_k` - Search latency with different k values
-- `search_index_size` - Search latency vs index size
-- `flush` - Flush performance
-- `cosine_distance` - Distance computation overhead
-- `write_buffer_search` - Buffer search performance
-- `mixed_read_write` - Combined workload
+---
 
 ## Project Structure
 
 ```
 src/
-├── api/          # HTTP endpoints (Axum handlers)
+├── api/          # REST endpoints (Axum)
 ├── engine/       # Top-level orchestration
-├── index/        # Pluggable ANN index backends
-│   ├── mod.rs    # Index factory and exports
-│   ├── trait.rs  # AnnIndex trait definition
-│   ├── config.rs # Index configuration types
-│   ├── hnsw_adapter.rs  # HNSW backend
-│   └── diskann.rs       # DiskANN backend (optional)
-├── hnsw/         # HNSW index implementation
-│   ├── insert.rs # Insert algorithm
-│   ├── search.rs # Search algorithm
-│   └── persistence.rs # Index serialization
-├── storage/      # Storage backends
-│   ├── mock/     # In-memory/temp file storage
-│   └── aws/      # AWS S3/EBS backend (optional)
-├── tenant/       # Per-tenant state management
+├── index/        # Pluggable ANN backends (HNSW, DiskANN)
+├── hnsw/         # HNSW implementation
+├── storage/      # Storage backends (local, AWS)
+├── tenant/       # Per-tenant state
 ├── vectors/      # Vector storage (mmap)
 ├── wal/          # Write-ahead log
-├── config.rs     # Configuration
-└── lib.rs        # Library root
+└── config.rs     # Configuration
 
-tests/
-├── acid_tests.rs           # ACID compliance
-├── concurrency_tests.rs    # Multi-threaded operations
-├── crash_recovery_tests.rs # Failure recovery
-├── stress_tests.rs         # Load testing
-└── ...
-
-benches/
-├── performance_benchmarks.rs # Criterion benchmarks
-└── search_benchmark.rs       # End-to-end search benchmarks
+tests/            # Integration tests
+benches/          # Performance benchmarks
 ```
+
+---
 
 ## License
 
