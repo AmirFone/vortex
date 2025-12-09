@@ -10,52 +10,18 @@ pub mod search;
 pub mod insert;
 pub mod persistence;
 
+use crate::index::HnswParams;
 use crate::storage::BlockStorage;
 use crate::vectors::VectorStore;
 use node::HnswNode;
 use parking_lot::RwLock;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-use std::sync::Arc;
 
-/// HNSW configuration
-#[derive(Clone, Debug)]
-pub struct HnswConfig {
-    /// Max connections per node (M parameter)
-    pub m: usize,
-    /// Max connections at layer 0 (usually 2*M)
-    pub m_max0: usize,
-    /// Search width during construction
-    pub ef_construction: usize,
-    /// Level multiplier (1/ln(M))
-    pub ml: f64,
-    /// Default search ef (can be overridden per query)
-    pub ef_search: usize,
-}
-
-impl Default for HnswConfig {
-    fn default() -> Self {
-        let m = 16;
-        Self {
-            m,
-            m_max0: m * 2,
-            ef_construction: 500, // Increased from 200 for better recall
-            ml: 1.0 / (m as f64).ln(),
-            ef_search: 200, // Increased from 100 for better search quality
-        }
-    }
-}
-
-impl HnswConfig {
-    pub fn new(m: usize) -> Self {
-        Self {
-            m,
-            m_max0: m * 2,
-            ef_construction: 500, // Increased from 200 for better recall
-            ml: 1.0 / (m as f64).ln(),
-            ef_search: 200, // Increased from 100 for better search quality
-        }
-    }
-}
+/// HNSW configuration - type alias for HnswParams (single source of truth)
+///
+/// Use `HnswParams` directly for new code. This alias is provided for
+/// backward compatibility within the hnsw module.
+pub type HnswConfig = HnswParams;
 
 /// HNSW index with external vector storage
 pub struct HnswIndex {
@@ -154,6 +120,7 @@ impl HnswIndex {
 mod tests {
     use super::*;
     use crate::storage::mock::{MockBlockStorage, MockStorageConfig};
+    use std::sync::Arc;
 
     fn normalize(v: &[f32]) -> Vec<f32> {
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -169,7 +136,7 @@ mod tests {
         let storage = Arc::new(MockBlockStorage::temp(MockStorageConfig::fast()).unwrap());
         let vectors = VectorStore::open(storage, "vectors.bin", 4).await.unwrap();
 
-        let config = HnswConfig::new(4);
+        let config = HnswConfig::with_m(4);
         let index = HnswIndex::new(config);
 
         // Insert some vectors
@@ -194,7 +161,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let storage_path = temp_dir.path().to_path_buf();
 
-        let config = HnswConfig::new(4);
+        let config = HnswConfig::with_m(4);
 
         // Create and populate index
         {

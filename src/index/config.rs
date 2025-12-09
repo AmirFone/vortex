@@ -1,8 +1,10 @@
 //! Index configuration types
 //!
 //! Provides configuration structures for different index backends.
-
-use crate::hnsw::HnswConfig;
+//!
+//! This module defines `HnswParams` as the single source of truth for HNSW
+//! configuration. The `HnswConfig` type in `hnsw/mod.rs` is a type alias
+//! that points to `HnswParams`.
 
 /// Configuration for ANN index backends
 #[derive(Clone, Debug)]
@@ -87,32 +89,55 @@ impl HnswParams {
         }
     }
 
-    /// Convert to HnswConfig (for internal use)
-    pub fn to_hnsw_config(&self) -> HnswConfig {
-        HnswConfig {
-            m: self.m,
-            m_max0: self.m_max0,
-            ef_construction: self.ef_construction,
-            ml: self.ml,
-            ef_search: self.ef_search,
-        }
+    /// Create with custom parameters (builder pattern)
+    pub fn builder() -> HnswParamsBuilder {
+        HnswParamsBuilder::default()
     }
 }
 
-impl From<HnswParams> for HnswConfig {
-    fn from(params: HnswParams) -> Self {
-        params.to_hnsw_config()
-    }
+/// Builder for HnswParams with fluent API
+#[derive(Clone, Debug, Default)]
+pub struct HnswParamsBuilder {
+    m: Option<usize>,
+    m_max0: Option<usize>,
+    ef_construction: Option<usize>,
+    ef_search: Option<usize>,
 }
 
-impl From<HnswConfig> for HnswParams {
-    fn from(config: HnswConfig) -> Self {
-        Self {
-            m: config.m,
-            m_max0: config.m_max0,
-            ef_construction: config.ef_construction,
-            ml: config.ml,
-            ef_search: config.ef_search,
+impl HnswParamsBuilder {
+    /// Set M parameter (max connections per node)
+    pub fn m(mut self, m: usize) -> Self {
+        self.m = Some(m);
+        self
+    }
+
+    /// Set max connections at layer 0 (default: 2*M)
+    pub fn m_max0(mut self, m_max0: usize) -> Self {
+        self.m_max0 = Some(m_max0);
+        self
+    }
+
+    /// Set ef_construction (build quality)
+    pub fn ef_construction(mut self, ef: usize) -> Self {
+        self.ef_construction = Some(ef);
+        self
+    }
+
+    /// Set ef_search (search quality)
+    pub fn ef_search(mut self, ef: usize) -> Self {
+        self.ef_search = Some(ef);
+        self
+    }
+
+    /// Build the HnswParams
+    pub fn build(self) -> HnswParams {
+        let m = self.m.unwrap_or(16);
+        HnswParams {
+            m,
+            m_max0: self.m_max0.unwrap_or(m * 2),
+            ef_construction: self.ef_construction.unwrap_or(500),
+            ml: 1.0 / (m as f64).ln(),
+            ef_search: self.ef_search.unwrap_or(200),
         }
     }
 }

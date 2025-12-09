@@ -40,11 +40,37 @@ impl VectorStoreHeader {
             return Err(StorageError::Backend("Header too short".into()));
         }
 
+        // Safe slice conversion - we've already verified length above
+        let magic = u32::from_le_bytes(
+            bytes.get(0..4)
+                .ok_or_else(|| StorageError::Backend("Invalid magic bytes".into()))?
+                .try_into()
+                .map_err(|_| StorageError::Backend("Invalid magic byte conversion".into()))?
+        );
+        let version = u32::from_le_bytes(
+            bytes.get(4..8)
+                .ok_or_else(|| StorageError::Backend("Invalid version bytes".into()))?
+                .try_into()
+                .map_err(|_| StorageError::Backend("Invalid version byte conversion".into()))?
+        );
+        let dims = u32::from_le_bytes(
+            bytes.get(8..12)
+                .ok_or_else(|| StorageError::Backend("Invalid dims bytes".into()))?
+                .try_into()
+                .map_err(|_| StorageError::Backend("Invalid dims byte conversion".into()))?
+        );
+        let count = u64::from_le_bytes(
+            bytes.get(12..20)
+                .ok_or_else(|| StorageError::Backend("Invalid count bytes".into()))?
+                .try_into()
+                .map_err(|_| StorageError::Backend("Invalid count byte conversion".into()))?
+        );
+
         Ok(Self {
-            magic: u32::from_le_bytes(bytes[0..4].try_into().unwrap()),
-            version: u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
-            dims: u32::from_le_bytes(bytes[8..12].try_into().unwrap()),
-            count: u64::from_le_bytes(bytes[12..20].try_into().unwrap()),
+            magic,
+            version,
+            dims,
+            count,
             _reserved: [0; 44],
         })
     }

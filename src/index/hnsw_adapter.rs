@@ -30,9 +30,9 @@ impl fmt::Debug for HnswAdapter {
 impl HnswAdapter {
     /// Create a new HNSW adapter with the given parameters
     pub fn new(params: HnswParams) -> Self {
-        let config = params.to_hnsw_config();
+        // HnswConfig is a type alias for HnswParams, so we can use clone directly
         Self {
-            inner: HnswIndex::new(config),
+            inner: HnswIndex::new(params.clone()),
             params,
         }
     }
@@ -61,8 +61,8 @@ impl HnswAdapter {
         path: &str,
         params: HnswParams,
     ) -> StorageResult<Self> {
-        let config = params.to_hnsw_config();
-        let index = HnswIndex::load(storage, path, config).await?;
+        // HnswConfig is a type alias for HnswParams, so we can use clone directly
+        let index = HnswIndex::load(storage, path, params.clone()).await?;
         Ok(Self {
             inner: index,
             params,

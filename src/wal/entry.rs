@@ -64,35 +64,56 @@ impl WalEntry {
             return Err(WalError::TruncatedEntry);
         }
 
+        // Helper function for safe byte conversion
+        fn to_u32(data: &[u8], start: usize) -> Result<u32, WalError> {
+            data.get(start..start + 4)
+                .ok_or(WalError::TruncatedEntry)?
+                .try_into()
+                .map(u32::from_le_bytes)
+                .map_err(|_| WalError::TruncatedEntry)
+        }
+
+        fn to_u64(data: &[u8], start: usize) -> Result<u64, WalError> {
+            data.get(start..start + 8)
+                .ok_or(WalError::TruncatedEntry)?
+                .try_into()
+                .map(u64::from_le_bytes)
+                .map_err(|_| WalError::TruncatedEntry)
+        }
+
         // Parse magic
-        let magic = u32::from_le_bytes(data[0..4].try_into().unwrap());
+        let magic = to_u32(data, 0)?;
         if magic != WAL_MAGIC {
             return Err(WalError::InvalidMagic);
         }
 
         // Parse and validate CRC
-        let stored_crc = u32::from_le_bytes(data[4..8].try_into().unwrap());
+        let stored_crc = to_u32(data, 4)?;
         let expected_crc = crc32fast::hash(&data[8..expected_len]);
         if stored_crc != expected_crc {
             return Err(WalError::ChecksumMismatch);
         }
 
         // Parse header fields
-        let sequence = u64::from_le_bytes(data[8..16].try_into().unwrap());
-        let tenant_id = u64::from_le_bytes(data[16..24].try_into().unwrap());
-        let vector_id = u64::from_le_bytes(data[24..32].try_into().unwrap());
+        let sequence = to_u64(data, 8)?;
+        let tenant_id = to_u64(data, 16)?;
+        let vector_id = to_u64(data, 24)?;
 
-        // Parse vector
-        let vector: Vec<f32> = data[WAL_HEADER_SIZE..expected_len]
+        // Parse vector with safe conversion
+        let vector: Result<Vec<f32>, WalError> = data[WAL_HEADER_SIZE..expected_len]
             .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+            .map(|chunk| {
+                chunk.try_into()
+                    .map(f32::from_le_bytes)
+                    .map_err(|_| WalError::TruncatedEntry)
+            })
             .collect();
 
         Ok(Self {
             sequence,
             tenant_id,
             vector_id,
-            vector,
+            vector: vector?,
         })
     }
 
